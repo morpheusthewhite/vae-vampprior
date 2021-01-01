@@ -1,16 +1,24 @@
+import argparse
 import os
 
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 
-from vampprior.models import VAE
+from vampprior.models import VAE, VampVAE
+
+parser = argparse.ArgumentParser(description='VAE+VampPrior')
+# model: model name, prior
+parser.add_argument('--model_name', type=str, default='vae', metavar='model_name',
+                    help='model name: vae, vamp')
+args = parser.parse_args()
 
 epochs = 1
 batch_size = 100
-latent_dim = 40  # D
-L = 1
-lr = 1e-4
+D = 40  # latent variable dimension
+L = 1  # number of Monte Carlo samples
+lr = 1e-4  # learning rate
+C = 300  # pseudo inputs
 
 
 def train_test_vae(vae, x_train, x_test, epochs, batch_size,
@@ -64,13 +72,20 @@ def main():
     mnist_train = np.array((mnist_train / 255.) > 0.5, dtype=np.float32)
     mnist_test = np.array((mnist_test / 255.) > 0.5, dtype=np.float32)
 
-    # simple VAE, normal standard prior
-    standard_vae = VAE(latent_dim, L)
-    standard_vae.compile(optimizer=tf.keras.optimizers.Adam(lr=lr),
-                         loss=tf.nn.sigmoid_cross_entropy_with_logits)
+    if args.model_name == 'vae':
+        # simple VAE, normal standard prior
+        model = VAE(D, L)
+    elif args.model_name == 'vamp':
+        # VAE with Vamp prior
+        model = VampVAE(D, L, C)
+    else:
+        raise Exception('Wrong model name!')
 
-    train_test_vae(standard_vae, mnist_train, mnist_test,
-                   epochs, batch_size, model_name="standard-vae", show=False)
+    model.compile(optimizer=tf.keras.optimizers.Adam(lr=lr),
+                  loss=tf.nn.sigmoid_cross_entropy_with_logits)
+
+    train_test_vae(model, mnist_train, mnist_test,
+                   epochs, batch_size, model_name=args.model_name, show=False)
 
     return
 
