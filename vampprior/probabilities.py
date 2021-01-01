@@ -21,9 +21,10 @@ def log_logistic256(x, mean, logvar, reduce_dim=None):
     return tf.reduce_sum(logp, axis=reduce_dim)
 
 
-def log_normal_standard():
-    # TODO
-    pass
+def log_normal_standard(x, reduce_dim=None):
+    log2pi = np.log(2 * np.pi)
+    log_normal = -.5 * (log2pi + tf.math.pow(x, 2))
+    return tf.reduce_sum(log_normal, axis=reduce_dim)
 
 
 def log_normal_diag(x, mean, logvar, reduce_dim=None):
