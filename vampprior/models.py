@@ -1,6 +1,8 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
+
 from vampprior.layers import Encoder, Decoder, Sampling, MeanReducer
+from vampprior.probabilities import log_normal_diag
 
 
 class VAE(tf.keras.Model):
@@ -17,7 +19,6 @@ class VAE(tf.keras.Model):
 
     def call(self, inputs):
         mu, logvar = self.encoder(inputs)
-        sigma = tf.sqrt(tf.exp(logvar))
         samples = self.sampling((mu, logvar))
 
         # TODO: improve numerical stability and remove epsilon
@@ -33,8 +34,7 @@ class VAE(tf.keras.Model):
 
         # second addend, corresponding to log( q_phi (z|x) )
         # where q_phi=N(z| mu_phi(x), sigma^2_phi(x))
-        normal_latent = tfp.distributions.MultivariateNormalDiag(mu, sigma)
-        log_q_phi = tf.math.log(eps + normal_latent.prob(samples))
+        log_q_phi = log_normal_diag(samples, mu, logvar, reduce_dim=1)
 
         regularization_loss = tf.math.subtract(tf.math.reduce_mean(log_q_phi),
                                                tf.math.reduce_mean(log_p_lambda),
@@ -63,11 +63,12 @@ class VampVAE():
     # TODO
     pass
 
+
 class MixtureVAE():
     # TODO
     pass
 
+
 class HVAE():
     # TODO
     pass
-
