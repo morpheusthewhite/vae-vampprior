@@ -1,6 +1,6 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
-from tensorflow.keras import layers, models
+from tensorflow.keras import layers
 
 
 class Encoder(tf.keras.layers.Layer):
