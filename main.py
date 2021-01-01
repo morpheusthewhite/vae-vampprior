@@ -10,6 +10,7 @@ epochs = 1
 batch_size = 100
 latent_dim = 40  # D
 L = 1
+lr = 1e-4
 
 
 def train_test_vae(vae, x_train, x_test, epochs, batch_size,
@@ -65,7 +66,7 @@ def main():
 
     # simple VAE, normal standard prior
     standard_vae = VAE(latent_dim, L)
-    standard_vae.compile(optimizer='adam',
+    standard_vae.compile(optimizer=tf.keras.optimizers.Adam(lr=lr),
                          loss=tf.nn.sigmoid_cross_entropy_with_logits)
 
     train_test_vae(standard_vae, mnist_train, mnist_test,
