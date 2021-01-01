@@ -1,25 +1,33 @@
-import tensorflow as tf
-import numpy as np
-import matplotlib.pyplot as plt
 import os
+
+import matplotlib.pyplot as plt
+import numpy as np
+import tensorflow as tf
+
 from vampprior.models import VAE
 
-def train_test_vae(vae, x_train, x_test, epochs,
+epochs = 1
+batch_size = 100
+latent_dim = 40  # D
+L = 1
+
+
+def train_test_vae(vae, x_train, x_test, epochs, batch_size,
                    model_name, show=True):
     """
     Train model and visualize result
     """
-    vae.fit(x_train, x_train, epochs=epochs)
+    vae.fit(x_train, x_train, epochs=epochs, batch_size=batch_size)
 
     print("Now testing reconstruction")
     reconstructions = vae(x_test[:5])
 
     plt.title(f"Reconstruction for {model_name}")
     for i, reconstruction in enumerate(reconstructions):
-        plt.subplot(2, 5, 1+i)
+        plt.subplot(2, 5, 1 + i)
         plt.imshow(x_test[i])
 
-        plt.subplot(2, 5, 6+i)
+        plt.subplot(2, 5, 6 + i)
         plt.imshow(reconstruction)
 
     if show:
@@ -36,7 +44,7 @@ def train_test_vae(vae, x_train, x_test, epochs,
 
     plt.title(f"Generations for {model_name}")
     for i, generation in enumerate(generations):
-        plt.subplot(1, 5, 1+i)
+        plt.subplot(1, 5, 1 + i)
         plt.imshow(generation)
 
     if show:
@@ -56,14 +64,15 @@ def main():
     mnist_test = np.array((mnist_test / 255.) > 0.5, dtype=np.float32)
 
     # simple VAE, normal standard prior
-    standard_vae = VAE(40, 1)
+    standard_vae = VAE(latent_dim, L)
     standard_vae.compile(optimizer='adam',
                          loss=tf.nn.sigmoid_cross_entropy_with_logits)
 
     train_test_vae(standard_vae, mnist_train, mnist_test,
-                   1, model_name="standard-vae", show=False)
+                   epochs, batch_size, model_name="standard-vae", show=False)
 
     return
+
 
 if __name__ == "__main__":
     main()
