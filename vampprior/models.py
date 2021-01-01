@@ -21,12 +21,7 @@ class VAE(tf.keras.Model):
         mu, logvar = self.encoder(inputs)
         samples = self.sampling((mu, logvar))
 
-        # TODO: improve numerical stability and remove epsilon
-        #   to improve decoding performances
-
-        # epsilon for avoiding log explosion in loss
-        eps = 1e-18
-
+        # FIXME log_normal_std not working as expected
         # loss due to regularization
         # first addend, corresponding to log( p_lambda (z_phi^l) )
         log_p_lambda = log_normal_standard(samples, reduce_dim=2, name='log-p-lambda')
@@ -93,12 +88,7 @@ class VampVAE(tf.keras.Model):
         z_expand = tf.expand_dims(samples, 2)  # N x L x 1 x D
         pseudo_mean_expand = tf.expand_dims(pseudo_mean, 0)  # 1 x C x D
         pseudo_logvar_expand = tf.expand_dims(pseudo_logvar, 0)  # 1 x C x D
-        #
-        # a = log_Normal_diag(z_expand, means, logvars, dim=2) - math.log(C)  # MB x C
-        # a_max, _ = torch.max(a, 1)  # MB x 1
-        #
-        # # calculte log-sum-exp
-        # log_prior = a_max + torch.log(torch.sum(torch.exp(a - a_max.unsqueeze(1)), 1))  # MB x 1
+
         lognormal = log_normal_diag(z_expand, pseudo_mean_expand, pseudo_logvar_expand,
                                     reduce_dim=3, name='pseudo-log-normal') - tf.math.log(self.C)
         ln_max = tf.reduce_max(lognormal, axis=2, keepdims=True)  # find max along the C values
