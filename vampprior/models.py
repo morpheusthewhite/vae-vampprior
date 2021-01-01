@@ -34,7 +34,8 @@ class VAE(tf.keras.Model):
 
         # second addend, corresponding to log( q_phi (z|x) )
         # where q_phi=N(z| mu_phi(x), sigma^2_phi(x))
-        log_q_phi = log_normal_diag(samples, mu, logvar, reduce_dim=1)
+        # samples have shape (N, L, D) where N is the minibatch size and D the latent var dimension
+        log_q_phi = log_normal_diag(samples, mu, logvar, reduce_dim=2)
 
         regularization_loss = tf.math.subtract(tf.math.reduce_mean(log_q_phi),
                                                tf.math.reduce_mean(log_p_lambda),
