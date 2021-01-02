@@ -1,7 +1,7 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-from vampprior.layers import Encoder, Decoder, Sampling, MeanReducer
+from vampprior.layers import Encoder, Decoder, Sampling, MeanReducer, MinMaxConstraint
 from vampprior.probabilities import log_normal_diag, log_normal_standard
 
 
@@ -55,7 +55,7 @@ class VAE(tf.keras.Model):
 
 
 class VampVAE(tf.keras.Model):
-    def __init__(self, D, L, C, init_mean=0, init_std=0.01, **kwargs):
+    def __init__(self, D, L, C, init_mean=.5, init_std=0.01, **kwargs):
         super(VampVAE, self).__init__(**kwargs)
         self.D = D  # latent dimension
         self.L = L  # MC samples
@@ -128,12 +128,3 @@ class MixtureVAE():
 class HVAE():
     # TODO
     pass
-
-
-class MinMaxConstraint(tf.keras.constraints.Constraint):
-    def __init__(self, min_value, max_value):
-        self.min = min_value
-        self.max = max_value
-
-    def __call__(self, w):
-        return tf.clip_by_value(w, self.min, self.max, name="min_value-max-constr")

@@ -16,7 +16,7 @@ class Encoder(tf.keras.layers.Layer):
         self.dense1 = layers.Dense(300, name='enc-dense1', activation='sigmoid')
 
         self.dense_mu = layers.Dense(self.D, name='enc-out-mu')
-        self.dense_logvar = layers.Dense(self.D, name='enc-out-lo')
+        self.dense_logvar = layers.Dense(self.D, name='enc-out-lo', kernel_constraint=MinMaxConstraint(-6., 2.))  # HardTanh
 
     def call(self, inputs):
         flattened = self.flatten(inputs)
@@ -104,7 +104,16 @@ class HEncoder():
     # TODO
     pass
 
+
 class HDecoder():
     # TODO
     pass
 
+
+class MinMaxConstraint(tf.keras.constraints.Constraint):
+    def __init__(self, min_value, max_value):
+        self.min = min_value
+        self.max = max_value
+
+    def __call__(self, w):
+        return tf.clip_by_value(w, self.min, self.max, name="min_value-max-constr")
