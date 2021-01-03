@@ -16,7 +16,8 @@ class Encoder(tf.keras.layers.Layer):
         self.dense1 = layers.Dense(300, name='enc-dense1', activation='sigmoid')
 
         self.dense_mu = layers.Dense(self.D, name='enc-out-mu')
-        self.dense_logvar = layers.Dense(self.D, name='enc-out-lo', kernel_constraint=MinMaxConstraint(-6., 2.))  # HardTanh
+        self.dense_logvar = layers.Dense(self.D, name='enc-out-lo',
+                                         activation=tf.keras.layers.Activation(Clamp(-6., 2.)))  # HardTanh
 
     def call(self, inputs):
         flattened = self.flatten(inputs)
@@ -65,7 +66,7 @@ class Decoder(tf.keras.layers.Layer):
 
         self.dense0 = layers.Dense(300, name='dec-dense0', activation='sigmoid')
         self.dense1 = layers.Dense(300, name='dec-dense1', activation='sigmoid')
-        self.reconstruct = layers.Dense(output_shape[0] * output_shape[1], name='dec-out')
+        self.reconstruct = layers.Dense(output_shape[0] * output_shape[1], name='dec-out', activation='sigmoid')
 
     def build(self, inputs_shape):
         # transform the result into a square matrix
@@ -117,3 +118,12 @@ class MinMaxConstraint(tf.keras.constraints.Constraint):
 
     def __call__(self, w):
         return tf.clip_by_value(w, self.min, self.max, name="min_value-max-constr")
+
+
+class Clamp:
+    def __init__(self, min_value=0., max_value=1.):
+        self.min_value = min_value
+        self.max_value = max_value
+
+    def __call__(self, x):
+        return tf.clip_by_value(x, self.min_value, self.max_value, name='hardtanh')
