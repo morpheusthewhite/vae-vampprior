@@ -2,7 +2,7 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 
 from vampprior.layers import Encoder, Decoder, Sampling, MeanReducer, MinMaxConstraint
-from vampprior.probabilities import log_normal_diag, log_normal_standard
+from vampprior.probabilities import log_normal_diag, log_normal_standard, log_bernoulli
 
 
 class VAE(tf.keras.Model):
@@ -19,9 +19,10 @@ class VAE(tf.keras.Model):
 
     def call(self, inputs):
         mu, logvar = self.encoder(inputs)
-        samples = self.sampling((mu, logvar))
+        samples = self.sampling((mu, logvar))  # (N, L, D)
+        reconstructed = self.decoder(samples)
 
-        # FIXME log_normal_std not working as expected
+        # FIXME not working as expected
         # loss due to regularization
         # first addend, corresponding to log( p_lambda (z_phi^l) )
         log_p_lambda = log_normal_standard(samples, reduce_dim=2, name='log-p-lambda')
@@ -29,14 +30,20 @@ class VAE(tf.keras.Model):
         # second addend, corresponding to log( q_phi (z|x) )
         # where q_phi=N(z| mu_phi(x), sigma^2_phi(x))
         # samples have shape (N, L, D) where N is the minibatch size and D the latent var dimension
-        log_q_phi = log_normal_diag(samples, mu, logvar, reduce_dim=2, name='log-q-phi')
+        #   therefore mu and logvar must have matching dimensions (N, D) -> (N, 1, D)
+        mu_expd = tf.expand_dims(mu, 1)
+        logvar_expd = tf.expand_dims(logvar, 1)
+        log_q_phi = log_normal_diag(samples, mu_expd, logvar_expd, reduce_dim=2, name='log-q-phi')
 
         regularization_loss = tf.math.subtract(tf.math.reduce_mean(log_q_phi),
                                                tf.math.reduce_mean(log_p_lambda),
-                                               name='regularization-loss')
+                                               name='reg-loss')
         self.add_loss(regularization_loss)
 
-        reconstructed = self.decoder(samples)
+        # # Reconstruction loss - KL
+        # rec_loss = - log_bernoulli(tf.transpose(reconstructed, [1, 0, 2, 3]), inputs, reduce_dim=[2, 3],
+        #                            name='rec-loss')
+        # self.add_loss(tf.math.reduce_mean(rec_loss))
 
         # return reconstructed
         return self.mean_reducer(reconstructed)
