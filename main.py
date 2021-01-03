@@ -26,7 +26,7 @@ def train_test_vae(vae, x_train, x_test, epochs,
         plt.show()
     else:
         # create folder to save images if it does not exists
-        if not os._exists("img"):
+        if not os.path.exists("img"):
             os.mkdir("img")
 
         plt.savefig(os.path.join("img", f"{model_name}-reconstructions.png"))
