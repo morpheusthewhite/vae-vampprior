@@ -71,8 +71,8 @@ class Decoder(tf.keras.layers.Layer):
         # transform the result into a square matrix
         # the result of a single input will be a (L, M, M) tensor
         # where M is the size of the original image
-        self.reshape = layers.Reshape((inputs_shape[1],
-                                       self.output_shape_[0], self.output_shape_[1]),
+        self.reshape = layers.Reshape((-1, self.output_shape_[0],
+                                       self.output_shape_[1]),
                                       name='dec-out-reshaped')
 
     def call(self, inputs):

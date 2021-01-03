@@ -34,7 +34,10 @@ class VAE(tf.keras.Model):
         # second addend, corresponding to log( q_phi (z|x) )
         # where q_phi=N(z| mu_phi(x), sigma^2_phi(x))
         normal_latent = tfp.distributions.MultivariateNormalDiag(mu, sigma)
-        log_q_phi = tf.math.log(eps + normal_latent.prob(samples))
+
+        # input needs to be reshaped to be (L, N, D) instead of (N, L, D)
+        samples_t = tf.transpose(samples, (1, 0, 2))
+        log_q_phi = tf.math.log(eps + normal_latent.prob(samples_t))
 
         regularization_loss = tf.math.subtract(tf.math.reduce_mean(log_q_phi),
                                                tf.math.reduce_mean(log_p_lambda),
@@ -49,10 +52,12 @@ class VAE(tf.keras.Model):
     def generate(self, N):
         normal_standard = tfp.distributions.MultivariateNormalDiag(tf.zeros((self.D,)),
                                                                    tf.ones((self.D,)))
+        # samples will have shape (N, D)
         samples = normal_standard.sample([N])
+        samples_extended = samples[:, tf.newaxis, :]
 
-        # inputs will have shape (N, D)
-        reconstructed = self.decoder(samples)
+        # inputs will have shape (N, 1, D)
+        reconstructed = self.decoder(samples_extended)
 
         # aggregation still needed as result will have shape (N, 1, M, M)
         # in order to remove the 1-st axis
