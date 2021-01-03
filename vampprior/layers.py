@@ -1,6 +1,6 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
-from tensorflow.keras import layers, models
+from tensorflow.keras import layers
 
 
 class Encoder(tf.keras.layers.Layer):
@@ -104,7 +104,25 @@ class HEncoder():
     # TODO
     pass
 
+
 class HDecoder():
     # TODO
     pass
 
+
+class MinMaxConstraint(tf.keras.constraints.Constraint):
+    def __init__(self, min_value, max_value):
+        self.min = min_value
+        self.max = max_value
+
+    def __call__(self, w):
+        return tf.clip_by_value(w, self.min, self.max, name="min_value-max-constr")
+
+
+class Clamp:
+    def __init__(self, min_value=0., max_value=1.):
+        self.min_value = min_value
+        self.max_value = max_value
+
+    def __call__(self, x):
+        return tf.clip_by_value(x, self.min_value, self.max_value, name='hardtanh')
