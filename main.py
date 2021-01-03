@@ -8,25 +8,34 @@ import tensorflow as tf
 from vampprior.models import VAE, VampVAE
 
 parser = argparse.ArgumentParser(description='VAE+VampPrior')
-# model: model name, prior
-parser.add_argument('--model_name', type=str, default='vae', metavar='model_name',
-                    help='model name: vae, vamp')
+parser.add_argument('--model-name', '-mn', type=str, default='vae', metavar='model_name',
+                    help='model name: vae, vamp', choices=['vae', 'vamp'])
+parser.add_argument('--epochs', '-e', type=int, default=1, metavar='epochs',
+                    help='number of epochs')
+parser.add_argument('-L', type=int, default=1, metavar='L',
+                    help='number of MC samples')
+parser.add_argument('-tb', '--tensorboard', action='store_true', dest='tb',
+                    help='save training log in ./ for tensorboard inspection')
+parser.set_defaults(tb=False)
 args = parser.parse_args()
 
-epochs = 1
 batch_size = 100
 D = 40  # latent variable dimension
-L = 1  # number of Monte Carlo samples
 lr = 1e-4  # learning rate
 C = 300  # pseudo inputs
+log_dir = './'
 
 
 def train_test_vae(vae, x_train, x_test, epochs, batch_size,
-                   model_name, show=True):
+                   model_name, show=True, tb=False):
     """
     Train model and visualize result
     """
-    vae.fit(x_train, x_train, epochs=epochs, batch_size=batch_size)
+    callbacks = None
+    if tb:
+        callbacks = [tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)]
+
+    vae.fit(x_train, x_train, epochs=epochs, batch_size=batch_size, callbacks=callbacks)
 
     print("Now testing reconstruction")
     reconstructions = vae(x_test[:5])
@@ -43,7 +52,7 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
         plt.show()
     else:
         # create folder to save images if it does not exists
-        if not os._exists("img"):
+        if not os.path.exists("img"):
             os.mkdir("img")
 
         plt.savefig(os.path.join("img", f"{model_name}-reconstructions.png"))
@@ -61,6 +70,8 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
     else:
         plt.savefig(os.path.join("img", f"{model_name}-generations.png"))
 
+if tf.config.list_physical_devices('GPU'):
+    print("Running on GPU")
 
 def main():
     mnist = tf.keras.datasets.mnist
@@ -74,10 +85,10 @@ def main():
 
     if args.model_name == 'vae':
         # simple VAE, normal standard prior
-        model = VAE(D, L)
+        model = VAE(D, args.L)
     elif args.model_name == 'vamp':
         # VAE with Vamp prior
-        model = VampVAE(D, L, C)
+        model = VampVAE(D, args.L, C)
     else:
         raise Exception('Wrong model name!')
 
@@ -85,7 +96,7 @@ def main():
                   loss=tf.nn.sigmoid_cross_entropy_with_logits)
 
     train_test_vae(model, mnist_train, mnist_test,
-                   epochs, batch_size, model_name=args.model_name, show=False)
+                   args.epochs, batch_size, model_name=args.model_name, show=False, tb=args.tb)
 
     return
 
