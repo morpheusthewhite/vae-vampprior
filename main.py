@@ -17,11 +17,14 @@ parser.add_argument('-L', type=int, default=1, metavar='L',
 parser.add_argument('-tb', '--tensorboard', action='store_true', dest='tb',
                     help='save training log in ./ for tensorboard inspection')
 parser.set_defaults(tb=False)
+parser.add_argument('-d', '--debug', action='store_true', dest='debug',
+                    help='show images')
+parser.set_defaults(debug=False)
 args = parser.parse_args()
 
 batch_size = 100
 D = 40  # latent variable dimension
-lr = 1e-4  # learning rate
+lr = 1e-3  # learning rate
 C = 300  # pseudo inputs
 log_dir = './'
 
@@ -96,7 +99,7 @@ def main():
                   loss=tf.nn.sigmoid_cross_entropy_with_logits)
 
     train_test_vae(model, mnist_train, mnist_test,
-                   args.epochs, batch_size, model_name=args.model_name, show=False, tb=args.tb)
+                   args.epochs, batch_size, model_name=args.model_name, show=args.debug, tb=args.tb)
 
     return
 

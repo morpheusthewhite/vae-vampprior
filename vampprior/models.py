@@ -6,10 +6,11 @@ from vampprior.probabilities import log_normal_diag, log_normal_standard, log_be
 
 
 class VAE(tf.keras.Model):
-    def __init__(self, D, L, **kwargs):
+    def __init__(self, D, L, beta=1e-3, **kwargs):
         super(VAE, self).__init__(**kwargs)
         self.D = D
         self.L = L
+        self.beta = beta
 
     def build(self, inputs_shape):
         self.encoder = Encoder(self.D)
@@ -22,23 +23,21 @@ class VAE(tf.keras.Model):
         samples = self.sampling((mu, logvar))  # (N, L, D)
         reconstructed = self.decoder(samples)
 
-        # FIXME not working as expected
+        # samples have shape (N, L, D) where N is the minibatch size and D the latent var dimension
+        #   must be reshaped to (L, N, D) specifically for log_q_phi
+        samples_t = tf.transpose(samples, (1, 0, 2))
         # loss due to regularization
         # first addend, corresponding to log( p_lambda (z_phi^l) )
-        log_p_lambda = log_normal_standard(samples, reduce_dim=2, name='log-p-lambda')
+        log_p_lambda = log_normal_standard(samples_t, reduce_dim=2, name='log-p-lambda')
 
         # second addend, corresponding to log( q_phi (z|x) )
         # where q_phi=N(z| mu_phi(x), sigma^2_phi(x))
-        # samples have shape (N, L, D) where N is the minibatch size and D the latent var dimension
-        #   therefore mu and logvar must have matching dimensions (N, D) -> (N, 1, D)
-        mu_expd = tf.expand_dims(mu, 1)
-        logvar_expd = tf.expand_dims(logvar, 1)
-        log_q_phi = log_normal_diag(samples, mu_expd, logvar_expd, reduce_dim=2, name='log-q-phi')
+        log_q_phi = log_normal_diag(samples_t, mu, logvar, reduce_dim=2, name='log-q-phi')
 
         regularization_loss = tf.math.subtract(tf.math.reduce_mean(log_q_phi),
                                                tf.math.reduce_mean(log_p_lambda),
                                                name='reg-loss')
-        self.add_loss(regularization_loss)
+        self.add_loss(self.beta * regularization_loss)
 
         # # Reconstruction loss - KL
         # rec_loss = - log_bernoulli(tf.transpose(reconstructed, [1, 0, 2, 3]), inputs, reduce_dim=[2, 3],
@@ -51,10 +50,12 @@ class VAE(tf.keras.Model):
     def generate(self, N):
         normal_standard = tfp.distributions.MultivariateNormalDiag(tf.zeros((self.D,)),
                                                                    tf.ones((self.D,)))
+        # samples will have shape (N, D)
         samples = normal_standard.sample([N])
+        samples_extended = samples[:, tf.newaxis, :]
 
-        # inputs will have shape (N, D)
-        reconstructed = self.decoder(samples)
+        # inputs will have shape (N, 1, D)
+        reconstructed = self.decoder(samples_extended)
 
         # aggregation still needed as result will have shape (N, 1, M, M)
         # in order to remove the 1-st axis
@@ -117,10 +118,12 @@ class VampVAE(tf.keras.Model):
     def generate(self, N):
         normal_standard = tfp.distributions.MultivariateNormalDiag(tf.zeros((self.D,)),
                                                                    tf.ones((self.D,)))
+        # samples will have shape (N, D)
         samples = normal_standard.sample([N])
+        samples_extended = samples[:, tf.newaxis, :]
 
-        # inputs will have shape (N, D)
-        reconstructed = self.decoder(samples)
+        # inputs will have shape (N, 1, D)
+        reconstructed = self.decoder(samples_extended)
 
         # aggregation still needed as result will have shape (N, 1, M, M)
         # in order to remove the 1-st axis

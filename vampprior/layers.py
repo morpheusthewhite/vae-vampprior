@@ -16,8 +16,7 @@ class Encoder(tf.keras.layers.Layer):
         self.dense1 = layers.Dense(300, name='enc-dense1', activation='sigmoid')
 
         self.dense_mu = layers.Dense(self.D, name='enc-out-mu')
-        self.dense_logvar = layers.Dense(self.D, name='enc-out-lo',
-                                         activation=tf.keras.layers.Activation(Clamp(-6., 2.)))  # HardTanh
+        self.dense_logvar = layers.Dense(self.D, name='enc-out-lo')
 
     def call(self, inputs):
         flattened = self.flatten(inputs)
@@ -66,14 +65,14 @@ class Decoder(tf.keras.layers.Layer):
 
         self.dense0 = layers.Dense(300, name='dec-dense0', activation='sigmoid')
         self.dense1 = layers.Dense(300, name='dec-dense1', activation='sigmoid')
-        self.reconstruct = layers.Dense(output_shape[0] * output_shape[1], name='dec-out', activation='sigmoid')
+        self.reconstruct = layers.Dense(output_shape[0] * output_shape[1], name='dec-out')
 
     def build(self, inputs_shape):
         # transform the result into a square matrix
         # the result of a single input will be a (L, M, M) tensor
         # where M is the size of the original image
-        self.reshape = layers.Reshape((inputs_shape[1],
-                                       self.output_shape_[0], self.output_shape_[1]),
+        self.reshape = layers.Reshape((-1, self.output_shape_[0],
+                                       self.output_shape_[1]),
                                       name='dec-out-reshaped')
 
     def call(self, inputs):
