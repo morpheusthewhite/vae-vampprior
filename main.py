@@ -8,25 +8,33 @@ import tensorflow as tf
 from vampprior.models import VAE, VampVAE
 
 parser = argparse.ArgumentParser(description='VAE+VampPrior')
+# Model params
 parser.add_argument('--model-name', '-mn', type=str, default='vae', metavar='model_name',
                     help='model name: vae, vamp', choices=['vae', 'vamp'])
+parser.add_argument('-C', '--pseudo-inputs', type=int, default=300, metavar='C',
+                    help='number of pseudo-inputs with vamp prior')
+parser.add_argument('-D', type=int, default=40, metavar='D',
+                    help='number of stochastic hidden units, i.e. z size (same for z1 and z2 with HVAE)')
+# Training params
 parser.add_argument('--epochs', '-e', type=int, default=1, metavar='epochs',
                     help='number of epochs')
+parser.add_argument('-bs', '--batch-size', type=int, default=100, metavar='batch_size',
+                    help='size of training mini-batch')
 parser.add_argument('-L', type=int, default=1, metavar='L',
                     help='number of MC samples')
+parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3, metavar='lr',
+                    help='learning rate')
+# Debugging params
 parser.add_argument('-tb', '--tensorboard', action='store_true', dest='tb',
                     help='save training log in ./ for tensorboard inspection')
 parser.set_defaults(tb=False)
 parser.add_argument('-d', '--debug', action='store_true', dest='debug',
                     help='show images')
 parser.set_defaults(debug=False)
+
 args = parser.parse_args()
 
-batch_size = 100
-D = 40  # latent variable dimension
-lr = 1e-3  # learning rate
-C = 300  # pseudo inputs
-log_dir = './'
+log_dir = './'  # save tensorboard logs in the current dir
 
 
 def train_test_vae(vae, x_train, x_test, epochs, batch_size,
@@ -73,10 +81,10 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
     else:
         plt.savefig(os.path.join("img", f"{model_name}-generations.png"))
 
-if tf.config.list_physical_devices('GPU'):
-    print("Running on GPU")
 
 def main():
+    assert len(tf.config.list_physical_devices('GPU')) > 0
+
     mnist = tf.keras.datasets.mnist
     (mnist_train, _), (mnist_test, _) = mnist.load_data()
 
@@ -88,18 +96,18 @@ def main():
 
     if args.model_name == 'vae':
         # simple VAE, normal standard prior
-        model = VAE(D, args.L)
+        model = VAE(args.D, args.L)
     elif args.model_name == 'vamp':
         # VAE with Vamp prior
-        model = VampVAE(D, args.L, C)
+        model = VampVAE(args.D, args.L, args.C)
     else:
         raise Exception('Wrong model name!')
 
-    model.compile(optimizer=tf.keras.optimizers.Adam(lr=lr),
+    model.compile(optimizer=tf.keras.optimizers.Adam(lr=args.lr),
                   loss=tf.nn.sigmoid_cross_entropy_with_logits)
 
     train_test_vae(model, mnist_train, mnist_test,
-                   args.epochs, batch_size, model_name=args.model_name, show=args.debug, tb=args.tb)
+                   args.epochs, args.batch_size, model_name=args.model_name, show=args.debug, tb=args.tb)
 
     return
 
