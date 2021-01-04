@@ -11,7 +11,7 @@ parser = argparse.ArgumentParser(description='VAE+VampPrior')
 # Model params
 parser.add_argument('--model-name', '-mn', type=str, default='vae', metavar='model_name',
                     help='model name: vae, vamp', choices=['vae', 'vamp'])
-parser.add_argument('-C', '--pseudo-inputs', type=int, default=300, metavar='C',
+parser.add_argument('-C', '--pseudo-inputs', type=int, default=300, metavar='C', dest='C',
                     help='number of pseudo-inputs with vamp prior')
 parser.add_argument('-D', type=int, default=40, metavar='D',
                     help='number of stochastic hidden units, i.e. z size (same for z1 and z2 with HVAE)')
@@ -22,8 +22,12 @@ parser.add_argument('-bs', '--batch-size', type=int, default=100, metavar='batch
                     help='size of training mini-batch')
 parser.add_argument('-L', type=int, default=1, metavar='L',
                     help='number of MC samples')
-parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3, metavar='lr',
+parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3, metavar='lr', dest='lr',
                     help='learning rate')
+parser.add_argument('-wu', '--warm-up', type=int, default=0, metavar='warmup', dest='warmup',
+                    help='number of warmup epochs')
+parser.add_argument('--max-beta', type=float, default=1e-2, metavar='max_beta',
+                    help='maximum value of the regularization loss coefficient')
 # Debugging params
 parser.add_argument('-tb', '--tensorboard', action='store_true', dest='tb',
                     help='save training log in ./ for tensorboard inspection')
@@ -38,15 +42,20 @@ log_dir = './'  # save tensorboard logs in the current dir
 
 
 def train_test_vae(vae, x_train, x_test, epochs, batch_size,
-                   model_name, show=True, tb=False):
+                   model_name, warmup, show=True, tb=False):
     """
     Train model and visualize result
     """
     callbacks = None
+    if tb or warmup > 0:
+        callbacks = []
     if tb:
-        callbacks = [tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)]
+        callbacks.append(tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1))
+    if warmup > 0:
+        callbacks.append(tf.keras.callbacks.LambdaCallback(on_epoch_begin=lambda epoch, logs: vae.update_beta(epoch)))
 
-    vae.fit(x_train, x_train, epochs=epochs, batch_size=batch_size, callbacks=callbacks)
+    vae.fit(x_train, x_train, epochs=epochs, batch_size=batch_size,
+            validation_data=(x_test, x_test), callbacks=callbacks)
 
     print("Now testing reconstruction")
     reconstructions = vae(x_test[:5])
@@ -96,10 +105,10 @@ def main():
 
     if args.model_name == 'vae':
         # simple VAE, normal standard prior
-        model = VAE(args.D, args.L)
+        model = VAE(args.D, args.L, warmup=args.warmup, max_beta=args.max_beta)
     elif args.model_name == 'vamp':
         # VAE with Vamp prior
-        model = VampVAE(args.D, args.L, args.C)
+        model = VampVAE(args.D, args.L, args.C, warmup=args.warmup, max_beta=args.max_beta)
     else:
         raise Exception('Wrong model name!')
 
@@ -107,7 +116,8 @@ def main():
                   loss=tf.nn.sigmoid_cross_entropy_with_logits)
 
     train_test_vae(model, mnist_train, mnist_test,
-                   args.epochs, args.batch_size, model_name=args.model_name, show=args.debug, tb=args.tb)
+                   args.epochs, args.batch_size, model_name=args.model_name, warmup=args.warmup,
+                   show=args.debug, tb=args.tb)
 
     return
 

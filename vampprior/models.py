@@ -6,11 +6,13 @@ from vampprior.probabilities import log_normal_diag, log_normal_standard, log_be
 
 
 class VAE(tf.keras.Model):
-    def __init__(self, D, L, beta=1e-3, **kwargs):
+    def __init__(self, D, L, max_beta=1., warmup=0, **kwargs):
         super(VAE, self).__init__(**kwargs)
         self.D = D
         self.L = L
-        self.beta = beta
+        self.max_beta = max_beta
+        self.beta = max_beta
+        self.warmup = warmup
 
     def build(self, inputs_shape):
         self.encoder = Encoder(self.D)
@@ -39,6 +41,7 @@ class VAE(tf.keras.Model):
                                                name='reg-loss')
         self.add_loss(self.beta * regularization_loss)
 
+        # TODO test log-bernoulli loss
         # # Reconstruction loss - KL
         # rec_loss = - log_bernoulli(tf.transpose(reconstructed, [1, 0, 2, 3]), inputs, reduce_dim=[2, 3],
         #                            name='rec-loss')
@@ -61,14 +64,19 @@ class VAE(tf.keras.Model):
         # in order to remove the 1-st axis
         return self.mean_reducer(reconstructed)
 
+    def update_beta(self, epoch):
+        self.beta = min((epoch + 1) / self.warmup * self.max_beta, self.max_beta)
+
 
 class VampVAE(tf.keras.Model):
-    def __init__(self, D, L, C, beta=1e-3, pseudo_init_mean=.5, pseudo_init_std=0.01, **kwargs):
+    def __init__(self, D, L, C, max_beta=1., warmup=0, pseudo_init_mean=.5, pseudo_init_std=0.01, **kwargs):
         super(VampVAE, self).__init__(**kwargs)
         self.D = D  # latent dimension
         self.L = L  # MC samples
         self.C = C  # number of pseudo inputs
-        self.beta = beta
+        self.max_beta = max_beta
+        self.beta = max_beta
+        self.warmup = warmup
         self.init_mean = pseudo_init_mean  # pseudo inputs initialization
         self.init_std = pseudo_init_std
 
@@ -133,8 +141,7 @@ class VampVAE(tf.keras.Model):
         return self.mean_reducer(reconstructed)
 
     def update_beta(self, epoch):
-        # TODO use it
-        self.beta.assign((epoch + 1) / self.warmup)
+        self.beta = min((epoch + 1) / self.warmup * self.max_beta, self.max_beta)
 
 
 class MixtureVAE():
