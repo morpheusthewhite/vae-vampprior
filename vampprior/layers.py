@@ -58,6 +58,27 @@ class Sampling(tf.keras.layers.Layer):
         return tf.reshape(latent_samples, (-1, self.L, self.D))
 
 
+class EncoderProb(tf.keras.layers.Layer):
+    """
+    Layer encoding probabilities. Used in guassian mixture to infer to which
+    class the input data belong
+    """
+    def __init__(self, K, **kwargs):
+        super(EncoderProb, self).__init__(**kwargs)
+        self.K = K
+
+    def build(self, inputs_shape):
+        # inputs will have shape (N, 2*D), a mu and logvar vector
+        self.dense0 = layers.Dense(300, name='encProb-dense0', activation='sigmoid')
+        self.dense1 = layers.Dense(self.K, name='encProb-out', activation='softmax')
+
+    def call(self, inputs):
+        x = self.dense0(inputs)
+        logits = self.dense1(x)
+
+        return logits
+
+
 class Decoder(tf.keras.layers.Layer):
     def __init__(self, output_shape, **kwargs):
         super(Decoder, self).__init__(**kwargs)
@@ -84,6 +105,49 @@ class Decoder(tf.keras.layers.Layer):
 
         # once reshaped it will have shape (N, L, M, M)
         return self.reshape(reconstructed)
+
+
+class DecoderMixture(tf.keras.layers.Layer):
+    """
+    Layer decoding distributions of mixture from a D-dimensional sample
+    """
+    def __init__(self, D, K, **kwargs):
+        super(DecoderMixture, self).__init__(**kwargs)
+        self.D = D
+        self.K = K
+
+    def build(self, inputs_shape):
+        self.dense0 = layers.Dense(300, name='dec-dense0', activation='sigmoid')
+
+        # layers for decoding each of the mixture component
+        self.dense1_mu_list = []
+        self.dense1_logvar_list = []
+
+        for k in range(self.K):
+            dense1_mu_k = layers.Dense(self.D, name=f"decMixture-dense1-mu-{k}")
+            dense1_logvar_k = layers.Dense(self.D, name=f"decMixture-dense1-logvar-{k}")
+
+            self.dense1_mu_list.append(dense1_mu_k)
+            self.dense1_logvar_list.append(dense1_logvar_k)
+
+    def call(self, inputs):
+        # TODO handle L > 1
+        # inputs will have shape (N, L, D)
+
+        x = self.dense0(inputs)
+
+        mixture_mu = []
+        mixture_logvar = []
+
+        for k in range(self.K):
+            # compute mu and logvar for each component
+            mu_k = self.dense1_mu_list[k](x)
+            logvar_k = self.dense1_logvar_list[k](x)
+
+            mixture_mu.append(mu_k)
+            mixture_logvar.append(logvar_k)
+
+        return mixture_mu, mixture_logvar
 
 
 class MeanReducer(tf.keras.layers.Layer):

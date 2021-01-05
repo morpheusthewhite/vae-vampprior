@@ -1,7 +1,8 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-from vampprior.layers import Encoder, Decoder, Sampling, MeanReducer, MinMaxConstraint
+from vampprior.layers import Encoder, Decoder, Sampling, MeanReducer, MinMaxConstraint, \
+        EncoderProb, DecoderMixture
 from vampprior.probabilities import log_normal_diag, log_normal_standard, log_bernoulli
 
 
@@ -144,11 +145,161 @@ class VampVAE(tf.keras.Model):
         self.beta = min((epoch + 1) / self.warmup * self.max_beta, self.max_beta)
 
 
-class MixtureVAE():
-    # TODO
-    pass
+class MixtureHVAE(tf.keras.Model):
+    def __init__(self, D, L, K, warmup=0, **kwargs):
+        super(MixtureHVAE, self).__init__(**kwargs)
+        self.D = D
+        self.L = L
+        self.K = K
+
+        # number of epochs of warmup
+        self.warmup = warmup
+
+        if warmup > 0:
+            self.beta = tf.Variable(0, trainable=False, dtype=tf.float32)
+        else:
+            self.beta = tf.Variable(1, trainable=False, dtype=tf.float32)
+
+    def build(self, inputs_shape):
+        # encoders for the 3 latent variables
+        self.encoder_z = Encoder(self.D, name='encoder-z')
+        self.encoder_w = Encoder(self.D, name='encoder-w')
+        self.encoder_y = EncoderProb(self.K, name='encoder-y')
+
+        self.sampling = Sampling(self.D, self.L)
+
+        self.decoder_mixture = DecoderMixture(self.D, self.K, name="decoder-mixture")
+        self.decoder_x = Decoder((inputs_shape[1], inputs_shape[2]),
+                                 name="decoder-x")
+
+        self.reshaper = tf.keras.layers.Reshape((inputs_shape[1], inputs_shape[2]))
+
+        self.mean_reducer = MeanReducer()
+
+    def call(self, inputs):
+        # encode both z and w from inputs
+        encoded_z = self.encoder_z(inputs)
+        encoded_w = self.encoder_w(inputs)
+
+        mu_z, logvar_z = encoded_z
+        mu_w, logvar_w = encoded_w
+
+        # sample from the encoded distributions of z and w
+        sampled_z = self.sampling(encoded_z)
+        sampled_w = self.sampling(encoded_w)
+
+        # concatenate z and w to be passed to the y encoder
+        sampled_zw = tf.concat([sampled_z, sampled_w], axis=2)
+        y_probs = self.encoder_y(sampled_zw)
+
+        # epsilon for avoiding log explosion in loss
+        # TODO: eventually remove epsilon
+        eps = 1e-20
+
+        y_logprobs = tf.math.log(eps + y_probs)
+
+        # decode mixtures (needed for loss later) and output x
+        mixture_mu_list, mixture_logvar_list = self.decoder_mixture(sampled_w)
+        reconstructed = self.decoder_x(sampled_z)
+
+        #
+        # losses
+        #
+
+        # probability p(z|x)
+        # z_distributions = tfp.distributions.MultivariateNormalDiag(mu_z, tf.sqrt(tf.exp(logvar_z)))
+        # log_q_z = tf.linalg.diag_part(tf.math.log(eps + z_distributions.prob(sampled_z)))
+
+        # sampled_z has shape (N, L, D)
+        # mu_z and logvar_z have shape (N, D)
+        log_q_z_l = log_normal_diag(tf.transpose(sampled_z, (1,0,2)),
+                                    mu_z, logvar_z, reduce_dim=2)
+        # sum over L
+        # TODO: is it correct? probably not, a sum of log does not make senses
+        log_q_z = tf.reduce_sum(log_q_z_l, axis=0)
+
+        # mean over L axis
+        mean_sampled_z = tf.reduce_mean(sampled_z, axis=1)
+        mean_y_probs = tf.reduce_mean(y_probs, axis=1)
+
+        # array of K elements
+        # where each elements is the (N,) tensor representing the
+        # probability that mean_sampled_z belongs to the k-th mixture
+        components_prob = []
+        for k in range(self.K):
+            # mixture_mu_list[k] and mixture_logvar_list[k] have shape (L, N, D)
+            # TODO: use custom function instead, without it exploding
+
+            k_normal = tfp.distributions.MultivariateNormalDiag(mixture_mu_list[k],
+                                                                tf.sqrt(tf.exp(mixture_logvar_list[k])))
+            components_prob.append(tf.linalg.diag_part(k_normal.prob(mean_sampled_z)))
+
+            # k_component_prob_l = log_normal_diag(mean_sampled_z,
+            #                                      tf.transpose(mixture_mu_list[k], (1,0,2)),
+            #                                      tf.transpose(mixture_logvar_list[k], (1,0,2)),
+            #                                      reduce_dim=2)
+            # components_prob.append(tf.reduce_sum(k_component_prob_l, axis=0))
+
+        # create a single tensor of shape (N, K) and multiply by inferred probs
+        stacked_probs = tf.stack(components_prob, axis=1) * mean_y_probs
+
+        log_p_z = tf.reduce_sum(tf.math.log(eps + stacked_probs), axis=1)
+
+        # loss regularizing inferred z to one of the mixture components
+        E_loss_1 = log_q_z - log_p_z
+
+        # KL(q(w|x)||p(w))
+        # loss to regularize w as a Normal standard
+
+        # KL_w = tfp.distributions.MultivariateNormalDiag(mu_w,
+        #                                                 tf.sqrt(tf.exp(logvar_w))).log_prob(sampled_w) - \
+        #        tfp.distributions.MultivariateNormalDiag(tf.zeros_like(mu_w),
+        #                                                tf.ones_like(logvar_w)).log_prob(sampled_w)
+
+        KL_w = log_normal_diag(tf.transpose(sampled_w, (1,0,2)), mu_w, logvar_w, reduce_dim=2) - \
+                log_normal_standard(tf.transpose(sampled_w, (1,0,2)), reduce_dim=2)
+
+        # E[KL(q(y|wz)||p(y))]
+        # loss to regularize y as a uniform categorical
+        KL_y = tf.reduce_sum(y_logprobs - tf.math.log(1/self.K), axis=1)
+
+        regularization_loss = tf.reduce_mean(E_loss_1) / 10000+ \
+                tf.reduce_mean(KL_w) + tf.reduce_mean(KL_y)
+        # regularization_loss = tf.reduce_mean(KL_w) + tf.reduce_mean(KL_y)
+        # regularization_loss = tf.reduce_mean(KL_w)
+
+        self.add_loss(tf.multiply(self.beta, regularization_loss))
+
+        return self.reshaper(self.mean_reducer(reconstructed))
+
+    def generate(self, N):
+        normal_dist = tfp.distributions.MultivariateNormalDiag(tf.zeros(self.D,),
+                                                               tf.ones(self.D,))
+        # samples will have shape (N, D)
+        w_samples = normal_dist.sample([N])
+
+        mixture_mu_list, mixture_logvar_list = self.decoder_mixture(w_samples)
+        mixture_samples = []
+
+        # sample from each of the components of the mixture
+        for k in range(self.K):
+            k_mixture_sample = tfp.distributions.MultivariateNormalDiag(
+                mixture_mu_list[k],
+                tf.sqrt(tf.exp(mixture_logvar_list[k]))
+            ).sample(1)
+
+            mixture_samples.append(k_mixture_sample)
+
+        mixture_samples = tf.stack(mixture_samples, axis=1)
+        reconstructed = self.decoder_x(mixture_samples)
+
+        return tf.reshape(reconstructed, (N*self.K, 28, 28))[:N]
+
+    def update_beta(self, epoch):
+        self.beta.assign((epoch + 1)/self.warmup)
 
 
 class HVAE():
     # TODO
     pass
+

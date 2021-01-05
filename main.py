@@ -5,14 +5,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 
-from vampprior.models import VAE, VampVAE
+from vampprior.models import VAE, VampVAE, MixtureHVAE
 
 parser = argparse.ArgumentParser(description='VAE+VampPrior')
 # Model params
 parser.add_argument('--model-name', '-mn', type=str, default='vae', metavar='model_name',
-                    help='model name: vae, vamp', choices=['vae', 'vamp'])
+                    help='model name: vae, vamp, mog', choices=['vae', 'vamp', 'mog'])
 parser.add_argument('-C', '--pseudo-inputs', type=int, default=300, metavar='C', dest='C',
                     help='number of pseudo-inputs with vamp prior')
+parser.add_argument('-K', '--mixtures', type=int, default=8, metavar='K', dest='K',
+                    help='number of components in the gaussian mixture')
 parser.add_argument('-D', type=int, default=40, metavar='D',
                     help='number of stochastic hidden units, i.e. z size (same for z1 and z2 with HVAE)')
 # Training params
@@ -109,6 +111,9 @@ def main():
     elif args.model_name == 'vamp':
         # VAE with Vamp prior
         model = VampVAE(args.D, args.L, args.C, warmup=args.warmup, max_beta=args.max_beta)
+    elif args.model_name == 'mog':
+        # HVAE with mixture of gaussians
+        model = MixtureHVAE(args.D, args.L, args.K, warmup=args.warmup)
     else:
         raise Exception('Wrong model name!')
 
