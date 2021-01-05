@@ -60,7 +60,7 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
     print("Now testing reconstruction")
     reconstructions = vae(x_test[:5])
 
-    plt.title(f"Reconstruction for {model_name}")
+    plt.figure().suptitle(f"Reconstruction for {model_name}")
     for i, reconstruction in enumerate(reconstructions):
         plt.subplot(2, 5, 1 + i)
         plt.imshow(x_test[i])
@@ -78,11 +78,11 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
         plt.savefig(os.path.join("img", f"{model_name}-reconstructions.png"))
 
     print("Now testing generation")
-    generations = vae.generate(5)
+    generations = vae.generate(10)
 
-    plt.title(f"Generations for {model_name}")
+    plt.figure().suptitle(f"Generations for {model_name}")
     for i, generation in enumerate(generations):
-        plt.subplot(1, 5, 1 + i)
+        plt.subplot(2, 5, 1 + i)
         plt.imshow(generation)
 
     if show:
