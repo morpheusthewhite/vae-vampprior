@@ -95,7 +95,7 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
 
     print(f"Loglikelihood: {loglikelihood_mean}")
     plt.figure().suptitle(f"Loglikelihood histogram for {model_name}")
-    plt.hist(loglikelihoods, bins=250)
+    plt.hist(loglikelihoods / x_test.shape[0], bins=100)
 
     if show:
         plt.show()
