@@ -90,6 +90,18 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
     else:
         plt.savefig(os.path.join("img", f"{model_name}-generations.png"))
 
+    print("Estimating likelihood")
+    loglikelihoods, loglikelihood_mean = vae.loglikelihood(x_test, 4)
+
+    print(f"Loglikelihood: {loglikelihood_mean}")
+    plt.figure().suptitle(f"Loglikelihood histogram for {model_name}")
+    plt.hist(loglikelihoods, bins=250)
+
+    if show:
+        plt.show()
+    else:
+        plt.savefig(os.path.join("img", f"{model_name}-loglikelihood-hist.png"))
+
 
 def main():
     assert len(tf.config.list_physical_devices('GPU')) > 0

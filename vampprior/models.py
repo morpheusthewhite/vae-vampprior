@@ -1,5 +1,6 @@
 import tensorflow as tf
 import tensorflow_probability as tfp
+import numpy as np
 
 from vampprior.layers import Encoder, Decoder, Sampling, MeanReducer, MinMaxConstraint
 from vampprior.probabilities import log_normal_diag, log_normal_standard, log_bernoulli
@@ -20,14 +21,25 @@ class VAE(tf.keras.Model):
         self.decoder = Decoder((inputs_shape[1], inputs_shape[2]))
         self.mean_reducer = MeanReducer()
 
-    def call(self, inputs):
-        mu, logvar = self.encoder(inputs)
-        samples = self.sampling((mu, logvar))  # (N, L, D)
-        reconstructed = self.decoder(samples)
+    def call(self, inputs, training):
+        reconstructed, samples, mu, logvar = self.forward(inputs)
 
+        loss = self.loss_fn(inputs, mu, logvar, samples, reconstructed, training)
+        self.add_loss(loss)
+
+        return self.mean_reducer(reconstructed)
+
+    def loss_fn(self, inputs, mu, logvar, samples, reconstructed, training=False,
+                average=True):
+        """
+        Calculate loss for the given inputs.
+        @param training: if true beta is considered in the calculation of the total loss
+        @param average: if true aggregate loss over inputs by averaging
+        """
         # samples have shape (N, L, D) where N is the minibatch size and D the latent var dimension
         #   must be reshaped to (L, N, D) specifically for log_q_phi
         samples_t = tf.transpose(samples, (1, 0, 2))
+
         # loss due to regularization
         # first addend, corresponding to log( p_lambda (z_phi^l) )
         log_p_lambda = log_normal_standard(samples_t, reduce_dim=2, name='log-p-lambda')
@@ -36,10 +48,13 @@ class VAE(tf.keras.Model):
         # where q_phi=N(z| mu_phi(x), sigma^2_phi(x))
         log_q_phi = log_normal_diag(samples_t, mu, logvar, reduce_dim=2, name='log-q-phi')
 
-        regularization_loss = tf.math.subtract(tf.math.reduce_mean(log_q_phi),
-                                               tf.math.reduce_mean(log_p_lambda),
-                                               name='reg-loss')
-        self.add_loss(self.beta * regularization_loss)
+        if average:
+            regularization_loss = tf.math.subtract(tf.math.reduce_mean(log_q_phi),
+                                                   tf.math.reduce_mean(log_p_lambda),
+                                                   name='reg-loss')
+        else:
+            regularization_loss = tf.math.subtract(log_q_phi, log_p_lambda,
+                                                   name='reg-loss')
 
         # TODO test log-bernoulli loss
         # # Reconstruction loss - KL
@@ -47,8 +62,44 @@ class VAE(tf.keras.Model):
         #                            name='rec-loss')
         # self.add_loss(tf.math.reduce_mean(rec_loss))
 
-        # return reconstructed
-        return self.mean_reducer(reconstructed)
+        # consider beta only in the training phase
+        if training:
+            loss = self.beta * regularization_loss
+        else:
+            loss = regularization_loss
+
+        return loss
+
+    def loglikelihood(self, X, R):
+        """
+        Calculate loglikelihoods for the given data
+        @param R: number of iterations over X
+        @return loglikelihoods: array of loglikelihood, each corresponding to one input
+        @return loglikelihood_mean: mean of loglikelihoods across passed data
+        """
+
+        loglikelihoods = []
+        for r in range(R):
+            reconstructed, samples, mu, logvar = self.forward(X)
+
+            loglikelihood = self.loss_fn(X, mu, logvar, samples, reconstructed,
+                                         training=False, average=False)
+
+            loglikelihoods.append(loglikelihood)
+
+        loglikelihoods_stacked = tf.stack(loglikelihoods, axis=1)
+        loglikelihoods_max = tf.reduce_logsumexp(loglikelihoods_stacked, axis=1) - \
+                np.log(R)
+
+        loglikelihood_mean = tf.reduce_mean(loglikelihoods_max)
+        return loglikelihoods_max, loglikelihood_mean
+
+    def forward(self, X):
+        mu, logvar = self.encoder(X)
+        samples = self.sampling((mu, logvar))  # (N, L, D)
+        reconstructed = self.decoder(samples)
+
+        return reconstructed, samples, mu, logvar
 
     def generate(self, N):
         normal_standard = tfp.distributions.MultivariateNormalDiag(tf.zeros((self.D,)),
