@@ -5,8 +5,49 @@ import numpy as np
 from vampprior.layers import Encoder, Decoder, Sampling, MeanReducer, MinMaxConstraint
 from vampprior.probabilities import log_normal_diag, log_normal_standard, log_bernoulli
 
+class VAEGeneric(tf.keras.Model):
+    def loglikelihood(self, X, R, MB=100):
+        """
+        Calculate loglikelihoods for the given data
+        @param R: number of iterations over X
+        @param MB: minibatch size. Needed to avoid Out Of Memory errors. X.shape[0]
+            needs to be divisible by this number
+        @return loglikelihoods: array of loglikelihood, each corresponding to one input
+        @return loglikelihood_mean: mean of loglikelihoods across passed data
+        """
+        # number of batches
+        NB = X.shape[0] // MB
 
-class VAE(tf.keras.Model):
+        loglikelihoods = []
+        for r in range(R):
+            loglikelihoods_minibatch = []
+            for n in range(NB):
+
+                # starting and ending index of the current minibatch
+                minibatch_start, minibatch_end = n*MB, (n+1)*MB
+
+                minibatch = X[minibatch_start:minibatch_end]
+                reconstructed, samples, mu, logvar = \
+                        self.forward(minibatch)
+
+                loglikelihood = self.loss_fn(minibatch,
+                                             mu, logvar, samples, reconstructed,
+                                             training=False, average=False)
+
+                # append the result of the current minibatch
+                loglikelihoods_minibatch.append(loglikelihood)
+
+            loglikelihoods.append(tf.concat(loglikelihoods_minibatch, axis=0))
+
+        loglikelihoods_stacked = tf.stack(loglikelihoods, axis=1)
+        loglikelihoods_max = tf.reduce_logsumexp(loglikelihoods_stacked, axis=1) - \
+                np.log(R)
+
+        loglikelihood_mean = tf.reduce_mean(loglikelihoods_max)
+        return loglikelihoods_max, loglikelihood_mean
+
+
+class VAE(VAEGeneric):
     def __init__(self, D, L, max_beta=1., warmup=0, **kwargs):
         super(VAE, self).__init__(**kwargs)
         self.D = D
@@ -29,7 +70,7 @@ class VAE(tf.keras.Model):
 
         return self.mean_reducer(reconstructed)
 
-    def loss_fn(self, inputs, mu, logvar, samples, reconstructed, training=False,
+    def loss_fn(self, inputs, mu, logvar, samples, reconstructed, training=True,
                 average=True):
         """
         Calculate loss for the given inputs.
@@ -53,7 +94,9 @@ class VAE(tf.keras.Model):
                                                    tf.math.reduce_mean(log_p_lambda),
                                                    name='reg-loss')
         else:
-            regularization_loss = tf.math.subtract(log_q_phi, log_p_lambda,
+            # reduce only along the L axis
+            regularization_loss = tf.math.subtract(tf.math.reduce_mean(log_q_phi, axis=0),
+                                                   tf.math.reduce_mean(log_p_lambda, axis=0),
                                                    name='reg-loss')
 
         # TODO test log-bernoulli loss
@@ -69,30 +112,6 @@ class VAE(tf.keras.Model):
             loss = regularization_loss
 
         return loss
-
-    def loglikelihood(self, X, R):
-        """
-        Calculate loglikelihoods for the given data
-        @param R: number of iterations over X
-        @return loglikelihoods: array of loglikelihood, each corresponding to one input
-        @return loglikelihood_mean: mean of loglikelihoods across passed data
-        """
-
-        loglikelihoods = []
-        for r in range(R):
-            reconstructed, samples, mu, logvar = self.forward(X)
-
-            loglikelihood = self.loss_fn(X, mu, logvar, samples, reconstructed,
-                                         training=False, average=False)
-
-            loglikelihoods.append(loglikelihood)
-
-        loglikelihoods_stacked = tf.stack(loglikelihoods, axis=1)
-        loglikelihoods_max = tf.reduce_logsumexp(loglikelihoods_stacked, axis=1) - \
-                np.log(R)
-
-        loglikelihood_mean = tf.reduce_mean(loglikelihoods_max)
-        return loglikelihoods_max, loglikelihood_mean
 
     def forward(self, X):
         mu, logvar = self.encoder(X)
@@ -119,7 +138,7 @@ class VAE(tf.keras.Model):
         self.beta = min((epoch + 1) / self.warmup * self.max_beta, self.max_beta)
 
 
-class VampVAE(tf.keras.Model):
+class VampVAE(VAEGeneric):
     def __init__(self, D, L, C, max_beta=1., warmup=0, pseudo_init_mean=.5, pseudo_init_std=0.01, **kwargs):
         super(VampVAE, self).__init__(**kwargs)
         self.D = D  # latent dimension
@@ -143,12 +162,17 @@ class VampVAE(tf.keras.Model):
             constraint=MinMaxConstraint(0., 1.)
         )
 
-    def call(self, inputs, **kwargs):
-        # main forward pass
-        mu, logvar = self.encoder(inputs)
-        samples = self.sampling((mu, logvar))  # N x L x D
-        reconstructed = self.decoder(samples)
+    def call(self, inputs, training, **kwargs):
+        reconstructed, samples, mu, logvar = self.forward(inputs)
 
+        loss = self.loss_fn(inputs, mu, logvar, samples, reconstructed, training)
+        self.add_loss(loss)
+
+        # return reconstructed
+        return self.mean_reducer(reconstructed)
+
+    def loss_fn(self, X, mu, logvar, samples, reconstructed,
+                training=True, average=True):
         # loss due to regularization
         # Prior: Vamp Prior
         # 1. get mean and var from pseudo_inputs
@@ -158,7 +182,8 @@ class VampVAE(tf.keras.Model):
         pseudo_logvar_expand = tf.expand_dims(pseudo_logvar, 0)  # 1 x C x D
 
         lognormal = log_normal_diag(z_expand, pseudo_mean_expand, pseudo_logvar_expand,
-                                    reduce_dim=3, name='pseudo-log-normal') - tf.math.log(tf.cast(self.C, tf.float32))
+                                    reduce_dim=3, name='pseudo-log-normal') - \
+                tf.math.log(tf.cast(self.C, tf.float32))
         ln_max = tf.reduce_max(lognormal, axis=2)  # find max along the C values, shape (N, L)
         # get average of probabilities over C using log-sum-exp:
         #   https://en.wikipedia.org/wiki/LogSumExp#log-sum-exp_trick_for_log-domain_calculations
@@ -170,13 +195,23 @@ class VampVAE(tf.keras.Model):
         samples_t = tf.transpose(samples, (1, 0, 2))
         log_q_phi = log_normal_diag(samples_t, mu, logvar, reduce_dim=2, name='log-q-phi')
 
-        regularization_loss = tf.math.subtract(tf.math.reduce_mean(log_q_phi),
-                                               tf.math.reduce_mean(log_p_lambda),
-                                               name='regularization-loss')
-        self.add_loss(self.beta * regularization_loss)
+        if average:
+            regularization_loss = tf.math.subtract(tf.math.reduce_mean(log_q_phi),
+                                                   tf.math.reduce_mean(log_p_lambda),
+                                                   name='regularization-loss')
+        else:
+            # reduce only along the L axis
+            regularization_loss = tf.math.subtract(tf.math.reduce_mean(log_q_phi, axis=1),
+                                                   tf.math.reduce_mean(log_p_lambda, axis=1),
+                                                   name='regularization-loss')
 
-        # return reconstructed
-        return self.mean_reducer(reconstructed)
+        # consider beta only if training
+        if training:
+            loss = self.beta * regularization_loss
+        else:
+            loss = regularization_loss
+
+        return loss
 
     def generate(self, N):
 
@@ -190,6 +225,14 @@ class VampVAE(tf.keras.Model):
         # aggregation still needed as result will have shape (N, 1, M, M)
         # in order to remove the 1-st axis
         return self.mean_reducer(reconstructed)
+
+    def forward(self, X):
+        # main forward pass
+        mu, logvar = self.encoder(X)
+        samples = self.sampling((mu, logvar))  # N x L x D
+        reconstructed = self.decoder(samples)
+
+        return reconstructed, samples, mu, logvar
 
     def update_beta(self, epoch):
         self.beta = min((epoch + 1) / self.warmup * self.max_beta, self.max_beta)
