@@ -2,8 +2,10 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 import numpy as np
 
-from vampprior.layers import Encoder, Decoder, Sampling, MeanReducer, MinMaxConstraint
+from vampprior.layers import Encoder, Decoder, Sampling, MeanReducer, MinMaxConstraint, HierarchicalEncoder, \
+    HierarchicalDecoder
 from vampprior.probabilities import log_normal_diag, log_normal_standard, log_bernoulli
+
 
 class VAEGeneric(tf.keras.Model):
     def loglikelihood(self, X, R, MB=100):
@@ -22,13 +24,12 @@ class VAEGeneric(tf.keras.Model):
         for r in range(R):
             loglikelihoods_minibatch = []
             for n in range(NB):
-
                 # starting and ending index of the current minibatch
-                minibatch_start, minibatch_end = n*MB, (n+1)*MB
+                minibatch_start, minibatch_end = n * MB, (n + 1) * MB
 
                 minibatch = X[minibatch_start:minibatch_end]
                 reconstructed, samples, mu, logvar = \
-                        self.forward(minibatch)
+                    self.forward(minibatch)
 
                 loglikelihood = self.loss_fn(minibatch,
                                              mu, logvar, samples, reconstructed,
@@ -41,7 +42,7 @@ class VAEGeneric(tf.keras.Model):
 
         loglikelihoods_stacked = tf.stack(loglikelihoods, axis=1)
         loglikelihoods_max = tf.reduce_logsumexp(loglikelihoods_stacked, axis=1) - \
-                np.log(R)
+                             np.log(R)
 
         loglikelihood_mean = tf.reduce_mean(loglikelihoods_max)
         return loglikelihoods_max, loglikelihood_mean
@@ -183,11 +184,12 @@ class VampVAE(VAEGeneric):
 
         lognormal = log_normal_diag(z_expand, pseudo_mean_expand, pseudo_logvar_expand,
                                     reduce_dim=3, name='pseudo-log-normal') - \
-                tf.math.log(tf.cast(self.C, tf.float32))
+                    tf.math.log(tf.cast(self.C, tf.float32))
         ln_max = tf.reduce_max(lognormal, axis=2)  # find max along the C values, shape (N, L)
         # get average of probabilities over C using log-sum-exp:
         #   https://en.wikipedia.org/wiki/LogSumExp#log-sum-exp_trick_for_log-domain_calculations
-        log_p_lambda = ln_max + tf.math.log(tf.reduce_sum(tf.math.exp(lognormal - ln_max[:, :, tf.newaxis]), 2))  # (N, L)
+        log_p_lambda = ln_max + tf.math.log(
+            tf.reduce_sum(tf.math.exp(lognormal - ln_max[:, :, tf.newaxis]), 2))  # (N, L)
 
         # Posterior: Normal posterior
         # samples have shape (N, L, D) where N is the mini-batch size and D the latent var dimension
@@ -243,6 +245,57 @@ class MixtureVAE():
     pass
 
 
-class HVAE():
-    # TODO
-    pass
+class HVAE(tf.keras.Model):
+    """Combines the encoder and decoder into an end-to-end model for training."""
+
+    def __init__(
+            self,
+            D,
+            name="autoencoder",
+            **kwargs
+    ):
+        super(HVAE, self).__init__(name=name, **kwargs)
+        self.D = D
+        self.encoder = HierarchicalEncoder(D=D)
+        self.sampling = Sampling(self.D, 1)
+
+    def build(self, input_shape):
+        self.decoder = HierarchicalDecoder((input_shape[1], input_shape[2]), D=self.D)
+
+    def call(self, inputs, **kwargs):
+        # variational dist from encoder
+        z1_q_mean, z1_q_logvar, z1_q, z2_q_mean, z2_q_logvar, z2_q = self.encoder(inputs)
+
+        x_mean, x_logvar, z1_p_mean, z1_p_logvar = self.decoder((z1_q, z2_q))
+
+        # KL
+        log_p_z1 = log_normal_diag(z1_q, z1_p_mean, z1_p_logvar, reduce_dim=1)
+        log_q_z1 = log_normal_diag(z1_q, z1_q_mean, z1_q_logvar, reduce_dim=1)
+        log_p_z2 = self.log_p_z2(z2_q)
+        log_q_z2 = log_normal_diag(z2_q, z2_q_mean, z2_q_logvar, reduce_dim=1)
+        KL = -(log_p_z1 + log_p_z2 - log_q_z1 - log_q_z2)
+        beta = 1e-3
+        self.add_loss(beta * KL)
+        return x_mean
+
+    def log_p_z2(self, z2):
+        # TODO add vamp prior if-else
+        log_prior = log_normal_standard(z2, reduce_dim=1)
+        return log_prior
+
+    def generate(self, N):
+        normal_standard = tfp.distributions.MultivariateNormalDiag(tf.zeros((self.D,)),
+                                                                   tf.ones((self.D,)))
+        # z2 will have shape (N, D)
+        z2 = normal_standard.sample([N])
+
+        # z1 from z2 with partial decoding
+        z1_p_mean, z1_p_logvar = self.decoder.p_z1(z2)
+
+        z1 = self.sampling((z1_p_mean, z1_p_logvar))  # (N, D)
+
+        x_mean, x_logvar = self.decoder.p_x(z1, z2)
+
+        # aggregation still needed as result will have shape (N, M, M)
+        # in order to remove the 1-st axis
+        return x_mean

@@ -5,12 +5,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 
-from vampprior.models import VAE, VampVAE
+from vampprior.models import VAE, VampVAE, HVAE
 
 parser = argparse.ArgumentParser(description='VAE+VampPrior')
 # Model params
 parser.add_argument('--model-name', '-mn', type=str, default='vae', metavar='model_name',
-                    help='model name: vae, vamp', choices=['vae', 'vamp'])
+                    help='model name: vae, vamp', choices=['vae', 'vamp', 'hvae'])
 parser.add_argument('-C', '--pseudo-inputs', type=int, default=300, metavar='C', dest='C',
                     help='number of pseudo-inputs with vamp prior')
 parser.add_argument('-D', type=int, default=40, metavar='D',
@@ -121,6 +121,8 @@ def main():
     elif args.model_name == 'vamp':
         # VAE with Vamp prior
         model = VampVAE(args.D, args.L, args.C, warmup=args.warmup, max_beta=args.max_beta)
+    elif args.model_name == 'hvae':
+        model = HVAE(args.D, name=args.model_name)
     else:
         raise Exception('Wrong model name!')
 
