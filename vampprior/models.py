@@ -159,10 +159,10 @@ class VampVAE(tf.keras.Model):
 
         lognormal = log_normal_diag(z_expand, pseudo_mean_expand, pseudo_logvar_expand,
                                     reduce_dim=3, name='pseudo-log-normal') - tf.math.log(tf.cast(self.C, tf.float32))
-        ln_max = tf.reduce_max(lognormal, axis=2, keepdims=True)  # find max along the C values
+        ln_max = tf.reduce_max(lognormal, axis=2)  # find max along the C values, shape (N, L)
         # get average of probabilities over C using log-sum-exp:
         #   https://en.wikipedia.org/wiki/LogSumExp#log-sum-exp_trick_for_log-domain_calculations
-        log_p_lambda = ln_max + tf.math.log(tf.reduce_sum(tf.math.exp(lognormal - ln_max), 2))
+        log_p_lambda = ln_max + tf.math.log(tf.reduce_sum(tf.math.exp(lognormal - ln_max[:, :, tf.newaxis]), 2))  # (N, L)
 
         # Posterior: Normal posterior
         # samples have shape (N, L, D) where N is the mini-batch size and D the latent var dimension
