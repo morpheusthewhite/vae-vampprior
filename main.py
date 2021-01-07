@@ -46,6 +46,8 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
     """
     Train model and visualize result
     """
+    plt.set_cmap('Greys')
+
     callbacks = None
     if tb or warmup > 0:
         callbacks = []
