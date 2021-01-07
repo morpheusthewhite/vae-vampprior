@@ -5,6 +5,7 @@ import numpy as np
 from vampprior.layers import Encoder, Decoder, Sampling, MeanReducer, MinMaxConstraint
 from vampprior.probabilities import log_normal_diag, log_normal_standard, log_bernoulli
 
+
 class VAEGeneric(tf.keras.Model):
     def loglikelihood(self, X, R, MB=100):
         """
@@ -15,6 +16,8 @@ class VAEGeneric(tf.keras.Model):
         @return loglikelihoods: array of loglikelihood, each corresponding to one input
         @return loglikelihood_mean: mean of loglikelihoods across passed data
         """
+        assert X.shape[0] % MB == 0
+
         # number of batches
         NB = X.shape[0] // MB
 
@@ -27,8 +30,7 @@ class VAEGeneric(tf.keras.Model):
                 minibatch_start, minibatch_end = n*MB, (n+1)*MB
 
                 minibatch = X[minibatch_start:minibatch_end]
-                reconstructed, samples, mu, logvar = \
-                        self.forward(minibatch)
+                reconstructed, samples, mu, logvar = self.forward(minibatch)
 
                 loglikelihood = self.loss_fn(minibatch,
                                              mu, logvar, samples, reconstructed,
@@ -44,7 +46,38 @@ class VAEGeneric(tf.keras.Model):
                 np.log(R)
 
         loglikelihood_mean = tf.reduce_mean(loglikelihoods_max)
-        return loglikelihoods_max, loglikelihood_mean
+        return loglikelihoods_max.numpy(), loglikelihood_mean.numpy()
+
+    def ELBO(self, X, MB=100):
+        """
+        Calculate ELBO for the given data
+        @param MB: minibatch size. Needed to avoid Out Of Memory errors. X.shape[0]
+            needs to be divisible by this number
+        @return ELBO: the Expected Lower BOund
+        """
+        assert X.shape[0] % MB == 0
+
+        # number of batches
+        NB = X.shape[0] // MB
+
+        elbos = []
+        for n in range(NB):
+
+            # starting and ending index of the current minibatch
+            minibatch_start, minibatch_end = n*MB, (n+1)*MB
+
+            minibatch = X[minibatch_start:minibatch_end]
+            reconstructed, samples, mu, logvar = self.forward(minibatch)
+
+            elbo = self.loss_fn(minibatch,
+                                mu, logvar, samples, reconstructed,
+                                training=False, average=True)
+
+            # append the result of the current minibatch
+            elbos.append(elbo)
+
+        elbos_stacked = tf.stack(elbos, axis=0)
+        return tf.reduce_mean(elbos_stacked).numpy()
 
 
 class VAE(VAEGeneric):
@@ -157,7 +190,8 @@ class VampVAE(VAEGeneric):
         self.mean_reducer = MeanReducer()
 
         self.pseudo_inputs = tf.Variable(
-            initial_value=tf.random.normal((self.C, inputs_shape[1], inputs_shape[2]), self.init_mean, self.init_std),
+            initial_value=tf.random.normal((self.C, inputs_shape[1], inputs_shape[2]),
+                                           self.init_mean, self.init_std),
             trainable=True,
             constraint=MinMaxConstraint(0., 1.)
         )

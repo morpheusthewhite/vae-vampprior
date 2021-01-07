@@ -120,6 +120,8 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
         else:
             plt.savefig(os.path.join("img", f"{model_name}-pseudoinputs.png"))
 
+    return vae.ELBO(x_test)
+
 
 def main():
     assert len(tf.config.list_physical_devices('GPU')) > 0
@@ -145,9 +147,10 @@ def main():
     model.compile(optimizer=tf.keras.optimizers.Adam(lr=args.lr),
                   loss=tf.nn.sigmoid_cross_entropy_with_logits)
 
-    train_test_vae(model, mnist_train, mnist_test,
-                   args.epochs, args.batch_size, model_name=args.model_name, warmup=args.warmup,
-                   show=args.debug, tb=args.tb)
+    elbo = train_test_vae(model, mnist_train, mnist_test,
+                          args.epochs, args.batch_size, model_name=args.model_name, warmup=args.warmup,
+                          show=args.debug, tb=args.tb)
+    print(f"ELBO: {elbo}")
 
     return
 
