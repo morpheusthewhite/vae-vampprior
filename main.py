@@ -80,8 +80,6 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
     print("Now testing generation")
     generations = vae.generate(10)
 
-    import pdb
-    pdb.set_trace()
 
     plt.figure().suptitle(f"Generations for {model_name}")
     for i, generation in enumerate(generations):
