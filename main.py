@@ -26,7 +26,7 @@ parser.add_argument('-lr', '--learning-rate', type=float, default=1e-3, metavar=
                     help='learning rate')
 parser.add_argument('-wu', '--warm-up', type=int, default=0, metavar='warmup', dest='warmup',
                     help='number of warmup epochs')
-parser.add_argument('--max-beta', type=float, default=1e-2, metavar='max_beta',
+parser.add_argument('--max-beta', type=float, default=1., metavar='max_beta',
                     help='maximum value of the regularization loss coefficient')
 # Debugging params
 parser.add_argument('-tb', '--tensorboard', action='store_true', dest='tb',
@@ -50,6 +50,8 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
     if tb or warmup > 0:
         callbacks = []
     if tb:
+        file_writer = tf.summary.create_file_writer(log_dir + "/metrics")
+        file_writer.set_as_default()
         callbacks.append(tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1))
     if warmup > 0:
         callbacks.append(tf.keras.callbacks.LambdaCallback(on_epoch_begin=lambda epoch, logs: vae.update_beta(epoch)))
@@ -58,7 +60,7 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
             validation_data=(x_test, x_test), callbacks=callbacks)
 
     print("Now testing reconstruction")
-    reconstructions = vae(x_test[:5])
+    reconstructions, _ = vae(x_test[:5])
 
     plt.figure().suptitle(f"Reconstruction for {model_name}")
     for i, reconstruction in enumerate(reconstructions):
@@ -132,12 +134,12 @@ def main():
     # simple workaround for working with binary data
     # where each pixel is either 0 or 1
     # TODO: use correct dataset
-    mnist_train = np.array((mnist_train / 255.) > 0.5, dtype=np.float32)
-    mnist_test = np.array((mnist_test / 255.) > 0.5, dtype=np.float32)
+    mnist_train = np.array((mnist_train / 255.) > .5, dtype=np.float32)
+    mnist_test = np.array((mnist_test / 255.) > .5, dtype=np.float32)
 
     if args.model_name == 'vae':
         # simple VAE, normal standard prior
-        model = VAE(args.D, args.L, warmup=args.warmup, max_beta=args.max_beta)
+        model = VAE(args.D, args.L, warmup=args.warmup, max_beta=args.max_beta, binary=True)
     elif args.model_name == 'vamp':
         # VAE with Vamp prior
         model = VampVAE(args.D, args.L, args.C, warmup=args.warmup, max_beta=args.max_beta)
@@ -146,8 +148,7 @@ def main():
     else:
         raise Exception('Wrong model name!')
 
-    model.compile(optimizer=tf.keras.optimizers.Adam(lr=args.lr),
-                  loss=tf.nn.sigmoid_cross_entropy_with_logits)
+    model.compile(optimizer=tf.keras.optimizers.Adam(lr=args.lr))
 
     elbo = train_test_vae(model, mnist_train, mnist_test,
                           args.epochs, args.batch_size, model_name=args.model_name, warmup=args.warmup,

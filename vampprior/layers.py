@@ -3,6 +3,7 @@ import tensorflow_probability as tfp
 from tensorflow.keras import layers
 import numpy as np
 
+
 class Encoder(tf.keras.layers.Layer):
     def __init__(self, D, **kwargs):
         super(Encoder, self).__init__(**kwargs)
@@ -34,6 +35,7 @@ class Sampling(tf.keras.layers.Layer):
     When called returns L samples of dimension D from the gaussians with the
     mu and logvar passed as input, using the reparametrization trick
     """
+
     def __init__(self, D, L, single=False, **kwargs):
         super(Sampling, self).__init__(**kwargs)
         self.L = L
@@ -53,7 +55,7 @@ class Sampling(tf.keras.layers.Layer):
         # N(0, I) * sigma + mu
 
         latent_samples = self.normal_standard.sample((self.L, mu.shape[0])) * \
-                tf.sqrt(tf.exp(logvar)) + mu
+                         tf.sqrt(tf.exp(logvar)) + mu
 
         # the returned samples will have shape (N, L, D)
         # where N is the size of the batch
@@ -64,13 +66,18 @@ class Sampling(tf.keras.layers.Layer):
 
 
 class Decoder(tf.keras.layers.Layer):
-    def __init__(self, output_shape, **kwargs):
+    def __init__(self, output_shape, binary=False, **kwargs):
         super(Decoder, self).__init__(**kwargs)
         self.output_shape_ = output_shape
 
         self.dense0 = layers.Dense(300, name='dec-dense0', activation='sigmoid')
         self.dense1 = layers.Dense(300, name='dec-dense1', activation='sigmoid')
-        self.reconstruct = layers.Dense(output_shape[0] * output_shape[1], name='dec-out')
+        self.binary = binary
+        if binary:
+            self.p_x_mean = layers.Dense(output_shape[0] * output_shape[1], name='dec-out-mean', activation='sigmoid')
+        else:
+            self.p_x_mean = layers.Dense(output_shape[0] * output_shape[1], name='dec-out-mean', activation='sigmoid')
+            self.p_x_logvar = layers.Dense(output_shape[0] * output_shape[1], name='dec-out-logvar')
 
     def build(self, inputs_shape):
         # transform the result into a square matrix
@@ -85,10 +92,14 @@ class Decoder(tf.keras.layers.Layer):
         x = self.dense0(inputs)
         x = self.dense1(x)
 
-        reconstructed = self.reconstruct(x)
+        x_mean = self.p_x_mean(x)
+        if self.binary:
+            x_logvar = None
+        else:
+            x_logvar = self.p_x_logvar(x)
 
-        # once reshaped it will have shape (N, L, M, M)
-        return self.reshape(reconstructed)
+        # (N, L, M, M)
+        return self.reshape(x_mean), x_logvar
 
 
 class MeanReducer(tf.keras.layers.Layer):
@@ -96,6 +107,7 @@ class MeanReducer(tf.keras.layers.Layer):
     Reduce with mean along the L axis. Meant to be used on the result of the
     decoder to aggregate the decoded L samples
     """
+
     def __init__(self, **kwargs):
         super(MeanReducer, self).__init__(**kwargs)
 
@@ -124,7 +136,8 @@ class HierarchicalEncoder(layers.Layer):  # MLP block #1   # layer insieme di al
         self.dense_z1_x = layers.Dense(300, activation="sigmoid", name="dense_z1_x")
         self.dense_joint = layers.Dense(300, activation="sigmoid", name="dense_joint")
         self.dense_z1_mean = layers.Dense(D, activation="sigmoid", name="dense_z1_mean")
-        self.dense_z1_logvar = layers.Dense(D, name="dense_z1_logvar")  # todo: chnge activation HARD tan  #### CONSTRAINT CLASS
+        self.dense_z1_logvar = layers.Dense(D,
+                                            name="dense_z1_logvar")  # todo: chnge activation HARD tan  #### CONSTRAINT CLASS
         # sampling
         self.sampling = Sampling(D, 1, single=True)  # don't consider L
 
@@ -174,7 +187,8 @@ class HierarchicalDecoder(layers.Layer):  # MLP block #2   # layer insieme di al
         self.dense_x_z2 = layers.Dense(300, activation="sigmoid", name="dense_x_z2")
         self.dense_joint = layers.Dense(300, activation="sigmoid", name="dense_x_mean")
         self.dense_x_mean = layers.Dense(np.prod(output_shape), activation="sigmoid", name="dense_x_mean")
-        self.dense_x_logvar = layers.Dense(np.prod(output_shape), name="dense_x_logvar")  # todo: chnge activation HARD tan
+        self.dense_x_logvar = layers.Dense(np.prod(output_shape),
+                                           name="dense_x_logvar")  # todo: chnge activation HARD tan
         self.output_shape_ = output_shape
 
     def build(self, inputs_shape):
@@ -204,7 +218,7 @@ class HierarchicalDecoder(layers.Layer):  # MLP block #2   # layer insieme di al
         concat_input = layers.Concatenate()([res, res2])
         joint = self.dense_joint(concat_input)
 
-        # reconstruct X (no sampling)
+        # p_x_mean X (no sampling)
         x_mean = self.dense_x_mean(joint)
         x_logvar = self.dense_x_logvar(joint)
 
@@ -229,7 +243,7 @@ class HierarchicalDecoder(layers.Layer):  # MLP block #2   # layer insieme di al
         concat_input = layers.Concatenate()([res, res2])
         joint = self.dense_joint(concat_input)
 
-        # reconstruct X (no sampling)
+        # p_x_mean X (no sampling)
         x_mean = self.dense_x_mean(joint)
         x_logvar = self.dense_x_logvar(joint)
 
