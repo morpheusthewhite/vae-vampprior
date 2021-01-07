@@ -6,6 +6,7 @@ import numpy as np
 import tensorflow as tf
 
 from vampprior.models import VAE, VampVAE, HVAE
+from vampprior.datasets import load_frey
 
 parser = argparse.ArgumentParser(description='VAE+VampPrior')
 # Model params
@@ -15,6 +16,8 @@ parser.add_argument('-C', '--pseudo-inputs', type=int, default=300, metavar='C',
                     help='number of pseudo-inputs with vamp prior')
 parser.add_argument('-D', type=int, default=40, metavar='D',
                     help='number of stochastic hidden units, i.e. z size (same for z1 and z2 with HVAE)')
+parser.add_argument('--dataset', '-ds', type=str, default='mnist', metavar='dataset',
+                    help='used dataset: mnist, frey', choices=['mnist', 'frey'])
 # Training params
 parser.add_argument('--epochs', '-e', type=int, default=1, metavar='epochs',
                     help='number of epochs')
@@ -129,14 +132,18 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
 def main():
     # assert len(tf.config.list_physical_devices('GPU')) > 0
 
-    mnist = tf.keras.datasets.mnist
-    (mnist_train, _), (mnist_test, _) = mnist.load_data()
+    if args.dataset == "mnist":
+        mnist = tf.keras.datasets.mnist
+        (mnist_train, _), (mnist_test, _) = mnist.load_data()
 
-    # simple workaround for working with binary data
-    # where each pixel is either 0 or 1
-    # TODO: use correct dataset
-    mnist_train = np.array((mnist_train / 255.) > 0.5, dtype=np.float32)
-    mnist_test = np.array((mnist_test / 255.) > 0.5, dtype=np.float32)
+        # simple workaround for working with binary data
+        # where each pixel is either 0 or 1
+        # TODO: use correct dataset
+        x_train = np.array((mnist_train / 255.) > 0.5, dtype=np.float32)
+        x_test = np.array((mnist_test / 255.) > 0.5, dtype=np.float32)
+    else:
+        # freyfaces dataset, only continous
+        x_train, x_test = load_frey(MB=args.batch_size)
 
     if args.model_name == 'vae':
         # simple VAE, normal standard prior
@@ -152,7 +159,7 @@ def main():
     model.compile(optimizer=tf.keras.optimizers.Adam(lr=args.lr),
                   loss=tf.nn.sigmoid_cross_entropy_with_logits)
 
-    elbo = train_test_vae(model, mnist_train, mnist_test,
+    elbo = train_test_vae(model, x_train, x_test,
                           args.epochs, args.batch_size, model_name=args.model_name, warmup=args.warmup,
                           show=args.debug, tb=args.tb)
     print(f"ELBO: {elbo}")
