@@ -102,6 +102,24 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
     else:
         plt.savefig(os.path.join("img", f"{model_name}-loglikelihood-hist.png"))
 
+    if "vamp" in model_name:
+        # visualize pseudoinputs only for vamp-priors models
+        print("Retrieving preudoinputs")
+
+        # take just 10 of them
+        assert vae.C > 10
+        pseudo_inputs = vae.pseudo_inputs[:10].numpy()
+
+        plt.figure().suptitle(f"Pseudoinputs for {model_name}")
+        for i, pseudo_input in enumerate(pseudo_inputs):
+            plt.subplot(2, 5, 1 + i)
+            plt.imshow(pseudo_input)
+
+        if show:
+            plt.show()
+        else:
+            plt.savefig(os.path.join("img", f"{model_name}-pseudoinputs.png"))
+
 
 def main():
     assert len(tf.config.list_physical_devices('GPU')) > 0
