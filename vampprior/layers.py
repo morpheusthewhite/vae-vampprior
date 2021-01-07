@@ -17,7 +17,7 @@ class Encoder(tf.keras.layers.Layer):
         self.dense1 = layers.Dense(300, name='enc-dense1', activation='sigmoid')
 
         self.dense_mu = layers.Dense(self.D, name='enc-out-mu')
-        self.dense_logvar = layers.Dense(self.D, name='enc-out-lo')
+        self.dense_logvar = layers.Dense(self.D, name='enc-out-lo', activation=Clamp(min_value=-4., max_value=2.))
 
     def call(self, inputs):
         flattened = self.flatten(inputs)
@@ -77,7 +77,8 @@ class Decoder(tf.keras.layers.Layer):
             self.p_x_mean = layers.Dense(output_shape[0] * output_shape[1], name='dec-out-mean', activation='sigmoid')
         else:
             self.p_x_mean = layers.Dense(output_shape[0] * output_shape[1], name='dec-out-mean', activation='sigmoid')
-            self.p_x_logvar = layers.Dense(output_shape[0] * output_shape[1], name='dec-out-logvar')
+            self.p_x_logvar = layers.Dense(output_shape[0] * output_shape[1], name='dec-out-logvar',
+                                           activation=Clamp(min_value=-4.5, max_value=0.))
 
     def build(self, inputs_shape):
         # transform the result into a square matrix
