@@ -38,7 +38,7 @@ parser.set_defaults(debug=False)
 
 args = parser.parse_args()
 
-log_dir = './'  # save tensorboard logs in the current dir
+log_dir = './logs'  # save tensorboard logs in the current dir
 
 
 def train_test_vae(vae, x_train, x_test, epochs, batch_size,
