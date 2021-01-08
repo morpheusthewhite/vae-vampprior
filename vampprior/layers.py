@@ -152,17 +152,20 @@ class HierarchicalEncoder(layers.Layer):  # MLP block #1   # layer insieme di al
         self.flatten = layers.Flatten(name='enc-flatten')
         # TODO move in build function
         # layers for z2,
-        self.dense_1 = layers.Dense(300, activation="sigmoid", name="dense_1")
-        self.dense_2 = layers.Dense(300, activation="sigmoid", name="dense_2")
-        self.dense_z2_mean = layers.Dense(D, activation="sigmoid", name="dense_z2_mean")
-        self.dense_z2_logvar = layers.Dense(D, name="dense_z2_logvar")  # todo: chnge activation HARD tan
+        self.dense_1 = GatedDense(300, hactivation="sigmoid", name="dense_1")
+        self.dense_2 = GatedDense(300, hactivation="sigmoid", name="dense_2")
+        self.dense_z2_mean = layers.Dense(D, name="dense_z2_mean")
+        self.dense_z2_logvar = layers.Dense(D, name="dense_z2_logvar",
+                                            activation=Clamp(-6., +2.))
+
         # layers for z1,
-        self.dense_z1_z2 = layers.Dense(300, activation="sigmoid", name="dense_z1_z2")
-        self.dense_z1_x = layers.Dense(300, activation="sigmoid", name="dense_z1_x")
-        self.dense_joint = layers.Dense(300, activation="sigmoid", name="dense_joint")
-        self.dense_z1_mean = layers.Dense(D, activation="sigmoid", name="dense_z1_mean")
+        self.dense_z1_z2 = GatedDense(300, hactivation="sigmoid", name="dense_z1_z2")
+        self.dense_z1_x = GatedDense(300, hactivation="sigmoid", name="dense_z1_x")
+        self.dense_joint = GatedDense(300, hactivation="sigmoid", name="dense_joint")
+        self.dense_z1_mean = layers.Dense(D, name="dense_z1_mean")
         self.dense_z1_logvar = layers.Dense(D,
-                                            name="dense_z1_logvar")  # todo: chnge activation HARD tan  #### CONSTRAINT CLASS
+                                            name="dense_z1_logvar",
+                                            activation=Clamp(-6., +2.))  # todo: chnge activation HARD tan  #### CONSTRAINT CLASS
         # sampling
         self.sampling = Sampling(D, 1, single=True)  # don't consider L
 
@@ -198,20 +201,24 @@ class HierarchicalDecoder(layers.Layer):  # MLP block #2   # layer insieme di al
     def __init__(self, output_shape, D, name="decoder", **kwargs):
         super(HierarchicalDecoder, self).__init__(name=name, **kwargs)
         # decoder: p(z1 | z2)
-        self.dense_1 = layers.Dense(300, activation="sigmoid", name="dense_1")
-        self.dense_z1new_z2 = layers.Dense(300, activation="sigmoid", name="dense_z1new_z2")
-        self.dense_z1new_mean = layers.Dense(D, activation="sigmoid", name="dense_z1new_mean")
-        self.dense_z1new_logvar = layers.Dense(D, name="dense_z1new_logvar")
+        self.dense_1 = GatedDense(300, hactivation="sigmoid", name="dense_1")
+        self.dense_z1new_z2 = GatedDense(300, hactivation="sigmoid", name="dense_z1new_z2")
+        self.dense_z1new_mean = layers.Dense(D, name="dense_z1new_mean")
+        self.dense_z1new_logvar = layers.Dense(D, name="dense_z1new_logvar",
+                                              activation=Clamp(-6., 2.))
         # sampling
         self.sampling = Sampling(D, 1, single=True)
 
         # decoder: p(x | z1, z2)
-        self.dense_x_z1new = layers.Dense(300, activation="sigmoid", name="dense_x_z1new")
-        self.dense_x_z2 = layers.Dense(300, activation="sigmoid", name="dense_x_z2")
-        self.dense_joint = layers.Dense(300, activation="sigmoid", name="dense_x_mean")
-        self.dense_x_mean = layers.Dense(np.prod(output_shape), activation="sigmoid", name="dense_x_mean")
+        self.dense_x_z1new = GatedDense(300, hactivation="sigmoid", name="dense_x_z1new")
+        self.dense_x_z2 = GatedDense(300, hactivation="sigmoid", name="dense_x_z2")
+        self.dense_joint = GatedDense(300, hactivation="sigmoid", name="dense_x_joint")
+        self.dense_x_mean = layers.Dense(np.prod(output_shape),
+                                         activation='sigmoid',
+                                         name="dense_x_mean")
         self.dense_x_logvar = layers.Dense(np.prod(output_shape),
-                                           name="dense_x_logvar")  # todo: chnge activation HARD tan
+                                           name="dense_x_logvar",
+                                           activation=Clamp(-6., 2.))
         self.output_shape_ = output_shape
 
         self.mean_reducer = MeanReducer()

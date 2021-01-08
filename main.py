@@ -87,7 +87,6 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
     print("Now testing generation")
     generations = vae.generate(10)
 
-
     plt.figure().suptitle(f"Generations for {model_name}")
     for i, generation in enumerate(generations):
         plt.subplot(2, 5, 1 + i)
@@ -132,7 +131,6 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
 
 
 def main():
-    # assert len(tf.config.list_physical_devices('GPU')) > 0
 
     if args.dataset == "mnist":
         mnist = tf.keras.datasets.mnist
@@ -164,8 +162,6 @@ def main():
                           args.epochs, args.batch_size, model_name=args.model_name, warmup=args.warmup,
                           show=args.debug, tb=args.tb)
     print(f"ELBO: {elbo}")
-
-
 
     return
 
