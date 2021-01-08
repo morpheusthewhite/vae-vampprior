@@ -189,7 +189,7 @@ class VAE(VAEGeneric):
 
 
 class VampVAE(VAEGeneric):
-    def __init__(self, D, L, C, max_beta=1., warmup=0, pseudo_init_mean=.5, pseudo_init_std=0.01, **kwargs):
+    def __init__(self, D, L, C, max_beta=1., warmup=0, pseudo_init_mean=.5, pseudo_init_std=0.01, binary=False, **kwargs):
         super(VampVAE, self).__init__(**kwargs)
         self.D = D  # latent dimension
         self.L = L  # MC samples
@@ -199,11 +199,12 @@ class VampVAE(VAEGeneric):
         self.warmup = warmup
         self.init_mean = pseudo_init_mean  # pseudo inputs initialization
         self.init_std = pseudo_init_std
+        self.binary = binary
 
     def build(self, inputs_shape):
         self.encoder = Encoder(self.D)
         self.sampling = Sampling(self.D, self.L)
-        self.decoder = Decoder((inputs_shape[1], inputs_shape[2]))
+        self.decoder = Decoder((inputs_shape[1], inputs_shape[2]), binary=self.binary)
         self.mean_reducer = MeanReducer()
 
         self.pseudo_inputs = tf.Variable(
@@ -214,21 +215,32 @@ class VampVAE(VAEGeneric):
         )
 
     def call(self, inputs, training, **kwargs):
-        reconstructed, samples, mu, logvar = self.forward(inputs)
+        x_mean, x_logvar, samples, mu, logvar = self.forward(inputs)
 
-        loss = self.loss_fn(inputs, mu, logvar, samples, reconstructed, training)
+        loss = self.loss_fn(inputs, mu, logvar, samples, x_mean, x_logvar, training)
         self.add_loss(loss)
 
-        # return reconstructed
-        return self.mean_reducer(reconstructed)
+        # (N, 1, M, M) -> (N, M, M)
+        if x_logvar is not None:
+            return self.mean_reducer(x_mean), self.mean_reducer(x_logvar)
+        else:
+            return self.mean_reducer(x_mean), x_logvar
 
-    def loss_fn(self, X, mu, logvar, samples, reconstructed,
-                training=True, average=True):
+    def loss_fn(self, inputs, z_mean, z_logvar, z, x_mean, x_logvar, training=True, average=True):
+
+        # Reconstruction loss - log p(x | z)
+        x_mean_t = tf.transpose(x_mean, (1, 0, 2, 3))  # (L, N, M, M)
+        if self.binary:
+            log_p_theta = log_bernoulli(x_mean_t, inputs, reduce_dim=[2, 3], name='log_p_theta')
+        else:
+            x_logvar_t = tf.transpose(x_logvar, (1, 0, 2, 3))
+            log_p_theta = log_logistic256(inputs, x_mean_t, x_logvar_t, reduce_dim=[2, 3], name='log_p_theta')
+
         # loss due to regularization
         # Prior: Vamp Prior
         # 1. get mean and var from pseudo_inputs
         pseudo_mean, pseudo_logvar = self.encoder(self.pseudo_inputs)  # C x D
-        z_expand = tf.expand_dims(samples, 2)  # N x L x 1 x D
+        z_expand = tf.expand_dims(z, 2)  # N x L x 1 x D
         pseudo_mean_expand = tf.expand_dims(pseudo_mean, 0)  # 1 x C x D
         pseudo_logvar_expand = tf.expand_dims(pseudo_logvar, 0)  # 1 x C x D
 
@@ -244,24 +256,26 @@ class VampVAE(VAEGeneric):
         # Posterior: Normal posterior
         # samples have shape (N, L, D) where N is the mini-batch size and D the latent var dimension
         # mu and logvar have shape (N, D), therefore we need to transpose samples
-        samples_t = tf.transpose(samples, (1, 0, 2))
-        log_q_phi = log_normal_diag(samples_t, mu, logvar, reduce_dim=2, name='log-q-phi')
+        samples_t = tf.transpose(z, (1, 0, 2))
+        log_q_phi = log_normal_diag(samples_t, z_mean, z_logvar, reduce_dim=2, name='log-q-phi')
 
         if average:
+            rec_loss = - tf.math.reduce_mean(log_p_theta, name='rec-loss')
             regularization_loss = tf.math.subtract(tf.math.reduce_mean(log_q_phi),
                                                    tf.math.reduce_mean(log_p_lambda),
                                                    name='regularization-loss')
         else:
             # reduce only along the L axis
+            rec_loss = - tf.math.reduce_mean(log_p_theta, name='rec-loss', axis=1)
             regularization_loss = tf.math.subtract(tf.math.reduce_mean(log_q_phi, axis=1),
                                                    tf.math.reduce_mean(log_p_lambda, axis=1),
                                                    name='regularization-loss')
 
         # consider beta only if training
         if training:
-            loss = self.beta * regularization_loss
+            loss = rec_loss + self.beta * regularization_loss
         else:
-            loss = regularization_loss
+            loss = rec_loss + regularization_loss
 
         return loss
 
@@ -272,19 +286,19 @@ class VampVAE(VAEGeneric):
         # take only the first sample, but keep shape
 
         # inputs will have shape (N, 1, D)
-        reconstructed = self.decoder(samples)
+        x_mean, x_logvar = self.decoder(samples)
 
         # aggregation still needed as result will have shape (N, 1, M, M)
         # in order to remove the 1-st axis
-        return self.mean_reducer(reconstructed)
+        return self.mean_reducer(x_mean)
 
     def forward(self, X):
         # main forward pass
         mu, logvar = self.encoder(X)
         samples = self.sampling((mu, logvar))  # N x L x D
-        reconstructed = self.decoder(samples)
+        x_mean, x_logvar = self.decoder(samples)
 
-        return reconstructed, samples, mu, logvar
+        return x_mean, x_logvar, samples, mu, logvar
 
     def update_beta(self, epoch):
         self.beta = min((epoch + 1) / self.warmup * self.max_beta, self.max_beta)
@@ -333,8 +347,6 @@ class HVAE(tf.keras.Model):
         #
         KL = tf.math.reduce_mean(KL)
         # self.add_loss(beta * KL)
-
-
 
         return x_mean
 
