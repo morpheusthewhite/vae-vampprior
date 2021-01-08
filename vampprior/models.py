@@ -316,6 +316,7 @@ class HVAE(tf.keras.Model):
             self,
             D,
             name="autoencoder",
+            binary=True,
             **kwargs
     ):
         super(HVAE, self).__init__(name=name, **kwargs)
@@ -323,7 +324,7 @@ class HVAE(tf.keras.Model):
         self.encoder = HierarchicalEncoder(D=D)
         self.sampling = Sampling(self.D, 1)
         self.mean_reducer = MeanReducer()
-
+        self.binary=binary
 
     def build(self, input_shape):
         self.decoder = HierarchicalDecoder((input_shape[1], input_shape[2]), D=self.D)
@@ -342,13 +343,24 @@ class HVAE(tf.keras.Model):
         KL = -(log_p_z1 + log_p_z2 - log_q_z1 - log_q_z2)
         beta = 1e-3
 
-        # import pdb
-        # pdb.set_trace()
-        #
+        # Reconstruction loss - log p(x | z)
+        #  import pdb; pdb.set_trace()
+        #  x_mean_t = tf.transpose(x_mean, (1, 0, 2, 3))  # (L, N, M, M)
+        x_mean_t = x_mean
         KL = tf.math.reduce_mean(KL)
-        # self.add_loss(beta * KL)
 
-        return x_mean
+        if self.binary:
+            # TODO check if mean over L must be computed BEFORE the reconstruction loss
+            log_p_theta = log_bernoulli(x_mean_t, inputs, reduce_dim=[1, 2], name='log_p_theta')
+        else:
+            x_logvar_t = tf.transpose(x_logvar, (1, 0, 2, 3))
+            log_p_theta = log_logistic256(inputs, x_mean_t, x_logvar_t,
+                                          reduce_dim=[2, 3], name='log_p_theta')
+        rec_loss = - tf.math.reduce_mean(log_p_theta, name='rec-loss')
+
+        self.add_loss(rec_loss + beta * KL)
+
+        return x_mean, x_logvar
 
     def log_p_z2(self, z2):
         # TODO add vamp prior if-else
@@ -363,9 +375,6 @@ class HVAE(tf.keras.Model):
         # z2 will have shape (N, D)
         z2 = normal_standard.sample([N])
 
-
-
-
         # z1 from z2 with partial decoding
         z1_p_mean, z1_p_logvar = self.decoder.p_z1(z2)
 
@@ -375,6 +384,5 @@ class HVAE(tf.keras.Model):
 
         # aggregation still needed as result will have shape (N, M, M)
         # in order to remove the 1-st axis
-
 
         return x_mean

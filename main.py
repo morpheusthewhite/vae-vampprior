@@ -145,8 +145,7 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
 
 
 def main():
-    # assert len(tf.config.list_physical_devices('GPU')) > 0
-    binary = False
+
     if args.dataset == "mnist":
         mnist = tf.keras.datasets.mnist
         (mnist_train, _), (mnist_test, _) = mnist.load_data()
@@ -182,8 +181,6 @@ def main():
                           args.epochs, args.batch_size, model_name=args.model_name, warmup=args.warmup, args=args,
                           show=args.debug, tb=args.tb)
     print(f"ELBO: {elbo}")
-
-
 
     return
 
