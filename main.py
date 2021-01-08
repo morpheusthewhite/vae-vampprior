@@ -126,8 +126,6 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
 
 
 def main():
-    assert len(tf.config.list_physical_devices('GPU')) > 0
-
     mnist = tf.keras.datasets.mnist
     (mnist_train, _), (mnist_test, _) = mnist.load_data()
 
