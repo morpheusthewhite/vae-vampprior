@@ -111,18 +111,6 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
     else:
         plt.savefig(os.path.join(res_dir, current_time, f"{model_name}-generations.png"))
 
-    print("Estimating likelihood")
-    loglikelihoods, loglikelihood_mean = vae.loglikelihood(x_test, 4)
-
-    print(f"Loglikelihood: {loglikelihood_mean}")
-    plt.figure().suptitle(f"Loglikelihood histogram for {model_name}")
-    plt.hist(loglikelihoods / x_test.shape[0], bins=100)
-
-    if show:
-        plt.show()
-    else:
-        plt.savefig(os.path.join(res_dir, current_time, f"{model_name}-loglikelihood-hist.png"))
-
     if "vamp" in model_name:
         # visualize pseudoinputs only for vamp-priors models
         print("Retrieving preudoinputs")
@@ -140,6 +128,18 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
             plt.show()
         else:
             plt.savefig(os.path.join(res_dir, current_time, f"{model_name}-pseudoinputs.png"))
+
+    print("Estimating likelihood")
+    loglikelihoods, loglikelihood_mean = vae.loglikelihood(x_test, 4)
+
+    print(f"Loglikelihood: {loglikelihood_mean}")
+    plt.figure().suptitle(f"Loglikelihood histogram for {model_name}")
+    plt.hist(loglikelihoods / x_test.shape[0], bins=100)
+
+    if show:
+        plt.show()
+    else:
+        plt.savefig(os.path.join(res_dir, current_time, f"{model_name}-loglikelihood-hist.png"))
 
     return vae.ELBO(x_test)
 
