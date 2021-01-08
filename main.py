@@ -146,6 +146,7 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
 
 def main():
 
+    binary = False
     if args.dataset == "mnist":
         mnist = tf.keras.datasets.mnist
         (mnist_train, _), (mnist_test, _) = mnist.load_data()
@@ -171,7 +172,7 @@ def main():
         # VAE with Vamp prior
         model = VampVAE(args.D, args.L, args.C, warmup=args.warmup, max_beta=args.max_beta, binary=binary)
     elif args.model_name == 'hvae':
-        model = HVAE(args.D, name=args.model_name)
+        model = HVAE(args.D, warmup=args.warmup, max_beta=args.max_beta, binary=binary, name=args.model_name)
     else:
         raise Exception('Wrong model name!')
 

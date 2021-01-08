@@ -63,9 +63,8 @@ class VAEGeneric(tf.keras.Model):
 
         elbos = []
         for n in range(NB):
-
             # starting and ending index of the current minibatch
-            minibatch_start, minibatch_end = n*MB, (n+1)*MB
+            minibatch_start, minibatch_end = n * MB, (n + 1) * MB
 
             minibatch = X[minibatch_start:minibatch_end]
             x_mean, x_logvar, z, z_mu, z_logvar = self.forward(minibatch)
@@ -183,13 +182,14 @@ class VAE(VAEGeneric):
     def update_beta(self, epoch):
 
         self.epoch = epoch
-        self.beta = min((epoch + 1) / self.warmup * self.max_beta, self.max_beta)
+        self.beta = min(epoch / self.warmup * self.max_beta, self.max_beta)
         with tf.name_scope("training_scope"):
             tf.summary.scalar("beta", self.beta, step=epoch)
 
 
 class VampVAE(VAEGeneric):
-    def __init__(self, D, L, C, max_beta=1., warmup=0, pseudo_init_mean=.5, pseudo_init_std=0.01, binary=False, **kwargs):
+    def __init__(self, D, L, C, max_beta=1., warmup=0, pseudo_init_mean=.5, pseudo_init_std=0.01, binary=False,
+                 **kwargs):
         super(VampVAE, self).__init__(**kwargs)
         self.D = D  # latent dimension
         self.L = L  # MC samples
@@ -301,7 +301,7 @@ class VampVAE(VAEGeneric):
         return x_mean, x_logvar, samples, mu, logvar
 
     def update_beta(self, epoch):
-        self.beta = min((epoch + 1) / self.warmup * self.max_beta, self.max_beta)
+        self.beta = min(epoch / self.warmup * self.max_beta, self.max_beta)
 
 
 class MixtureVAE():
@@ -316,6 +316,8 @@ class HVAE(tf.keras.Model):
             self,
             D,
             name="autoencoder",
+            max_beta=1.,
+            warmup=0,
             binary=True,
             **kwargs
     ):
@@ -324,7 +326,10 @@ class HVAE(tf.keras.Model):
         self.encoder = HierarchicalEncoder(D=D)
         self.sampling = Sampling(self.D, 1)
         self.mean_reducer = MeanReducer()
-        self.binary=binary
+        self.binary = binary
+        self.max_beta = max_beta
+        self.beta = max_beta
+        self.warmup = warmup
 
     def build(self, input_shape):
         self.decoder = HierarchicalDecoder((input_shape[1], input_shape[2]), D=self.D)
@@ -341,7 +346,6 @@ class HVAE(tf.keras.Model):
         log_p_z2 = self.log_p_z2(z2_q)
         log_q_z2 = log_normal_diag(z2_q, z2_q_mean, z2_q_logvar, reduce_dim=1)
         KL = -(log_p_z1 + log_p_z2 - log_q_z1 - log_q_z2)
-        beta = 1e-3
 
         # Reconstruction loss - log p(x | z)
         #  import pdb; pdb.set_trace()
@@ -358,7 +362,7 @@ class HVAE(tf.keras.Model):
                                           reduce_dim=[2, 3], name='log_p_theta')
         rec_loss = - tf.math.reduce_mean(log_p_theta, name='rec-loss')
 
-        self.add_loss(rec_loss + beta * KL)
+        self.add_loss(rec_loss + self.beta * KL)
 
         return x_mean, x_logvar
 
@@ -386,3 +390,10 @@ class HVAE(tf.keras.Model):
         # in order to remove the 1-st axis
 
         return x_mean
+
+    def update_beta(self, epoch):
+
+        self.epoch = epoch
+        self.beta = min(epoch / self.warmup * self.max_beta, self.max_beta)
+        with tf.name_scope("training_scope"):
+            tf.summary.scalar("beta", self.beta, step=epoch)
