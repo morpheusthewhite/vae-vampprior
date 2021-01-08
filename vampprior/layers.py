@@ -188,8 +188,6 @@ class HierarchicalEncoder(layers.Layer):  # MLP block #1   # layer insieme di al
         z1_mean = self.dense_z1_mean(res)
         z1_logvar = self.dense_z1_logvar(res)
         z1 = self.sampling((z1_mean, z1_logvar))
-        # import pdb
-        # pdb.set_trace()
 
         return z1_mean, z1_logvar, z1, z2_mean, z2_logvar, z2
 
@@ -215,6 +213,8 @@ class HierarchicalDecoder(layers.Layer):  # MLP block #2   # layer insieme di al
         self.dense_x_logvar = layers.Dense(np.prod(output_shape),
                                            name="dense_x_logvar")  # todo: chnge activation HARD tan
         self.output_shape_ = output_shape
+
+        self.mean_reducer = MeanReducer()
 
     def build(self, inputs_shape):
         # transform the result into a square matrix
@@ -259,9 +259,11 @@ class HierarchicalDecoder(layers.Layer):  # MLP block #2   # layer insieme di al
         z1_p_logvar = self.dense_z1new_logvar(res)
         return z1_p_mean, z1_p_logvar
 
+    # called ONLY when generating phase ??
     def p_x(self, z1, z2):
         # decoder: p(x | z1, z2)
         res = self.dense_x_z1new(z1)
+        res = self.mean_reducer(res)    ### added to correct shape (100, 1, ?) to (100, ?)
         res2 = self.dense_x_z2(z2)
         # joint
         # concat_input = Lambda(concat_test, name='concat_test')([var_1, var_2])
@@ -271,6 +273,9 @@ class HierarchicalDecoder(layers.Layer):  # MLP block #2   # layer insieme di al
         # p_x_mean X (no sampling)
         x_mean = self.dense_x_mean(joint)
         x_logvar = self.dense_x_logvar(joint)
+
+        x_mean = self.reshape(x_mean)
+        x_logvar = self.reshape(x_logvar)
 
         return x_mean, x_logvar
 

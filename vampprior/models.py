@@ -308,6 +308,8 @@ class HVAE(tf.keras.Model):
         self.D = D
         self.encoder = HierarchicalEncoder(D=D)
         self.sampling = Sampling(self.D, 1)
+        self.mean_reducer = MeanReducer()
+
 
     def build(self, input_shape):
         self.decoder = HierarchicalDecoder((input_shape[1], input_shape[2]), D=self.D)
@@ -325,7 +327,15 @@ class HVAE(tf.keras.Model):
         log_q_z2 = log_normal_diag(z2_q, z2_q_mean, z2_q_logvar, reduce_dim=1)
         KL = -(log_p_z1 + log_p_z2 - log_q_z1 - log_q_z2)
         beta = 1e-3
-        self.add_loss(beta * KL)
+
+        # import pdb
+        # pdb.set_trace()
+        #
+        KL = tf.math.reduce_mean(KL)
+        # self.add_loss(beta * KL)
+
+
+
         return x_mean
 
     def log_p_z2(self, z2):
@@ -333,11 +343,16 @@ class HVAE(tf.keras.Model):
         log_prior = log_normal_standard(z2, reduce_dim=1)
         return log_prior
 
+    # generate HVAE
     def generate(self, N):
+
         normal_standard = tfp.distributions.MultivariateNormalDiag(tf.zeros((self.D,)),
                                                                    tf.ones((self.D,)))
         # z2 will have shape (N, D)
         z2 = normal_standard.sample([N])
+
+
+
 
         # z1 from z2 with partial decoding
         z1_p_mean, z1_p_logvar = self.decoder.p_z1(z2)
@@ -348,4 +363,6 @@ class HVAE(tf.keras.Model):
 
         # aggregation still needed as result will have shape (N, M, M)
         # in order to remove the 1-st axis
+
+
         return x_mean
