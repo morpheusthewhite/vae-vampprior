@@ -1,9 +1,11 @@
 import argparse
+import json
 import os
 
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
+import datetime
 
 from vampprior.models import VAE, VampVAE, HVAE
 from vampprior.datasets import load_frey, load_fashion_mnist
@@ -45,12 +47,25 @@ log_dir = './logs'  # save tensorboard logs in the current dir
 
 
 def train_test_vae(vae, x_train, x_test, epochs, batch_size,
-                   model_name, warmup, show=True, tb=False):
+                   model_name, warmup, args, show=True, tb=False):
     """
     Train model and visualize result
     """
+    # create folder to save results if it does not exists
+    res_dir = "results"
+    if not os.path.exists(res_dir):
+        os.mkdir(res_dir)
+    # create folder dedicated to this single experiment
+    current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    os.mkdir(os.path.join(res_dir, current_time))
+    # store current args for later inspection
+    with open(os.path.join(res_dir, current_time, 'commandline_args.txt'), 'w') as f:
+        json.dump(args.__dict__, f, indent=2)
+
+    # set grey colormap
     plt.set_cmap('Greys')
 
+    # add callbacks for tensorboard or/and warmup beta update
     callbacks = None
     if tb or warmup > 0:
         callbacks = []
@@ -61,8 +76,10 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
     if warmup > 0:
         callbacks.append(tf.keras.callbacks.LambdaCallback(on_epoch_begin=lambda epoch, logs: vae.update_beta(epoch)))
 
+    # TRAINING =======================
     vae.fit(x_train, x_train, epochs=epochs, batch_size=batch_size,
             validation_data=(x_test, x_test), callbacks=callbacks)
+    # ================================
 
     print("Now testing reconstruction")
     reconstructions, _ = vae(x_test[:5])
@@ -78,15 +95,11 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
     if show:
         plt.show()
     else:
-        # create folder to save images if it does not exists
-        if not os.path.exists("img"):
-            os.mkdir("img")
-
-        plt.savefig(os.path.join("img", f"{model_name}-reconstructions.png"))
+        # save reconstruction
+        plt.savefig(os.path.join(res_dir, current_time, f"{model_name}-reconstructions.png"))
 
     print("Now testing generation")
     generations = vae.generate(10)
-
 
     plt.figure().suptitle(f"Generations for {model_name}")
     for i, generation in enumerate(generations):
@@ -96,7 +109,7 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
     if show:
         plt.show()
     else:
-        plt.savefig(os.path.join("img", f"{model_name}-generations.png"))
+        plt.savefig(os.path.join(res_dir, current_time, f"{model_name}-generations.png"))
 
     print("Estimating likelihood")
     loglikelihoods, loglikelihood_mean = vae.loglikelihood(x_test, 4)
@@ -108,7 +121,7 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
     if show:
         plt.show()
     else:
-        plt.savefig(os.path.join("img", f"{model_name}-loglikelihood-hist.png"))
+        plt.savefig(os.path.join(res_dir, current_time, f"{model_name}-loglikelihood-hist.png"))
 
     if "vamp" in model_name:
         # visualize pseudoinputs only for vamp-priors models
@@ -126,14 +139,14 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
         if show:
             plt.show()
         else:
-            plt.savefig(os.path.join("img", f"{model_name}-pseudoinputs.png"))
+            plt.savefig(os.path.join(res_dir, current_time, f"{model_name}-pseudoinputs.png"))
 
     return vae.ELBO(x_test)
 
 
 def main():
     # assert len(tf.config.list_physical_devices('GPU')) > 0
-
+    binary = False
     if args.dataset == "mnist":
         mnist = tf.keras.datasets.mnist
         (mnist_train, _), (mnist_test, _) = mnist.load_data()
@@ -166,7 +179,7 @@ def main():
     model.compile(optimizer=tf.keras.optimizers.Adam(lr=args.lr))
 
     elbo = train_test_vae(model, x_train, x_test,
-                          args.epochs, args.batch_size, model_name=args.model_name, warmup=args.warmup,
+                          args.epochs, args.batch_size, model_name=args.model_name, warmup=args.warmup, args=args,
                           show=args.debug, tb=args.tb)
     print(f"ELBO: {elbo}")
 
