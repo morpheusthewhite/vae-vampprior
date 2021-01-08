@@ -136,21 +136,23 @@ def main():
         mnist = tf.keras.datasets.mnist
         (mnist_train, _), (mnist_test, _) = mnist.load_data()
 
+        binary = True
         # simple workaround for working with binary data
         # where each pixel is either 0 or 1
         # TODO: use correct dataset
         x_train = np.array((mnist_train / 255.) > 0.5, dtype=np.float32)
         x_test = np.array((mnist_test / 255.) > 0.5, dtype=np.float32)
     else:
+        binary = False
         # freyfaces dataset, only continous
         x_train, x_test = load_frey(MB=args.batch_size)
 
     if args.model_name == 'vae':
         # simple VAE, normal standard prior
-        model = VAE(args.D, args.L, warmup=args.warmup, max_beta=args.max_beta, binary=True)
+        model = VAE(args.D, args.L, warmup=args.warmup, max_beta=args.max_beta, binary=binary)
     elif args.model_name == 'vamp':
         # VAE with Vamp prior
-        model = VampVAE(args.D, args.L, args.C, warmup=args.warmup, max_beta=args.max_beta)
+        model = VampVAE(args.D, args.L, args.C, warmup=args.warmup, max_beta=args.max_beta, binary=binary)
     elif args.model_name == 'hvae':
         model = HVAE(args.D, name=args.model_name)
     else:
