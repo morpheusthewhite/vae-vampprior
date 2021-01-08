@@ -4,6 +4,29 @@ from tensorflow.keras import layers
 import numpy as np
 
 
+class GatedDense(tf.keras.layers.Layer):
+    def __init__(self, units, hactivation='sigmoid', **kwargs):
+        super(GatedDense, self).__init__(**kwargs)
+        self.hactivation = hactivation
+        self.units = units
+
+    def build(self, inputs_shape):
+        self.g = tf.keras.layers.Dense(self.units, activation='sigmoid')
+        if self.hactivation == 'sigmoid':
+            self.h = tf.keras.layers.Dense(self.units, activation='sigmoid')
+        else:
+            self.h = tf.keras.layers.Dense(self.units)
+
+    def call(self, inputs):
+        hout = self.h(inputs)
+        gout = self.g(inputs)
+
+        if self.hactivation != 'sigmoid':
+            hout = self.hactivation(hout)
+
+        return tf.math.multiply(hout, gout)
+
+
 class Encoder(tf.keras.layers.Layer):
     def __init__(self, D, **kwargs):
         super(Encoder, self).__init__(**kwargs)
@@ -12,9 +35,8 @@ class Encoder(tf.keras.layers.Layer):
     def build(self, inputs_shape):
         self.flatten = layers.Flatten(input_shape=(inputs_shape[1], inputs_shape[2]),
                                       name='enc-flatten')
-
-        self.dense0 = layers.Dense(300, name='enc-dense0', activation='sigmoid')
-        self.dense1 = layers.Dense(300, name='enc-dense1', activation='sigmoid')
+        self.dense0 = GatedDense(300, 'sigmoid', name='enc-dense1')
+        self.dense1 = GatedDense(300, 'sigmoid', name='enc-dense1')
 
         self.dense_mu = layers.Dense(self.D, name='enc-out-mu')
         self.dense_logvar = layers.Dense(self.D, name='enc-out-lo', activation=Clamp(min_value=-4., max_value=2.))
@@ -70,8 +92,9 @@ class Decoder(tf.keras.layers.Layer):
         super(Decoder, self).__init__(**kwargs)
         self.output_shape_ = output_shape
 
-        self.dense0 = layers.Dense(300, name='dec-dense0', activation='sigmoid')
-        self.dense1 = layers.Dense(300, name='dec-dense1', activation='sigmoid')
+        self.dense0 = GatedDense(300, 'sigmoid', name='dec-dense0')
+        self.dense1 = GatedDense(300, 'sigmoid', name='dec-dense1')
+
         self.binary = binary
         if binary:
             self.p_x_mean = layers.Dense(output_shape[0] * output_shape[1], name='dec-out-mean', activation='sigmoid')
