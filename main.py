@@ -6,7 +6,7 @@ import numpy as np
 import tensorflow as tf
 
 from vampprior.models import VAE, VampVAE, HVAE
-from vampprior.datasets import load_frey
+from vampprior.datasets import load_frey, load_fashion_mnist
 
 parser = argparse.ArgumentParser(description='VAE+VampPrior')
 # Model params
@@ -17,7 +17,7 @@ parser.add_argument('-C', '--pseudo-inputs', type=int, default=300, metavar='C',
 parser.add_argument('-D', type=int, default=40, metavar='D',
                     help='number of stochastic hidden units, i.e. z size (same for z1 and z2 with HVAE)')
 parser.add_argument('--dataset', '-ds', type=str, default='mnist', metavar='dataset',
-                    help='used dataset: mnist, frey', choices=['mnist', 'frey'])
+                    help='used dataset: mnist, frey', choices=['mnist', 'frey', 'fashion'])
 # Training params
 parser.add_argument('--epochs', '-e', type=int, default=1, metavar='epochs',
                     help='number of epochs')
@@ -144,10 +144,13 @@ def main():
         # TODO: use correct dataset
         x_train = np.array((mnist_train / 255.) > 0.5, dtype=np.float32)
         x_test = np.array((mnist_test / 255.) > 0.5, dtype=np.float32)
-    else:
-        binary = False
+    elif args.dataset == "frey":
         # freyfaces dataset, only continous
         x_train, x_test = load_frey(MB=args.batch_size)
+    elif args.dataset == "fashion":
+        x_train, x_test = load_fashion_mnist()
+    else:
+        raise Exception("Wrong dataset name")
 
     if args.model_name == 'vae':
         # simple VAE, normal standard prior
