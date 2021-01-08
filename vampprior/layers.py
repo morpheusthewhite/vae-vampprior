@@ -121,6 +121,7 @@ class Decoder(tf.keras.layers.Layer):
             x_logvar = None
         else:
             x_logvar = self.p_x_logvar(x)
+            x_logvar = self.reshape(x_logvar)
 
         # (N, L, M, M)
         return self.reshape(x_mean), x_logvar
