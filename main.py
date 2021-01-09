@@ -154,7 +154,6 @@ def main():
         binary = True
         # simple workaround for working with binary data
         # where each pixel is either 0 or 1
-        # TODO: use correct dataset
         x_train = np.array((mnist_train / 255.) > 0.5, dtype=np.float32)
         x_test = np.array((mnist_test / 255.) > 0.5, dtype=np.float32)
     elif args.dataset == "frey":
@@ -167,19 +166,24 @@ def main():
 
     if args.model_name == 'vae':
         # simple VAE, normal standard prior
-        model = VAE(args.D, args.L, warmup=args.warmup, max_beta=args.max_beta, binary=binary)
+        model = VAE(args.L, D=args.D, warmup=args.warmup, max_beta=args.max_beta,
+                    binary=binary, name=args.model_name)
     elif args.model_name == 'vamp':
         # VAE with Vamp prior
-        model = VampVAE(args.D, args.L, args.C, warmup=args.warmup, max_beta=args.max_beta, binary=binary)
+        model = VampVAE(args.L, args.C, D=args.D, warmup=args.warmup,
+                        max_beta=args.max_beta, binary=binary, name=args.model_name)
     elif args.model_name == 'hvae':
-        model = HVAE(args.D, warmup=args.warmup, max_beta=args.max_beta, binary=binary, name=args.model_name)
+        model = HVAE(D=args.D, warmup=args.warmup, max_beta=args.max_beta,
+                     binary=binary, name=args.model_name)
     else:
         raise Exception('Wrong model name!')
 
     model.compile(optimizer=tf.keras.optimizers.Adam(lr=args.lr))
 
     elbo = train_test_vae(model, x_train, x_test,
-                          args.epochs, args.batch_size, model_name=args.model_name, warmup=args.warmup, args=args,
+                          args.epochs, args.batch_size,
+                          model_name=args.model_name,
+                          warmup=args.warmup, args=args,
                           show=args.debug, tb=args.tb)
     print(f"ELBO: {elbo}")
 

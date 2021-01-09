@@ -8,6 +8,15 @@ from vampprior.probabilities import log_normal_diag, log_normal_standard, log_be
 
 
 class VAEGeneric(tf.keras.Model):
+    def __init__(self, D, binary=True, max_beta=1., warmup=0, **kwargs):
+        super(VAEGeneric, self).__init__(**kwargs)
+        self.D = D
+        self.binary = binary
+        self.max_beta = max_beta
+        self.beta = max_beta
+        self.warmup = warmup
+        self.epoch = 0
+
     def loglikelihood(self, X, R, MB=100):
         """
         Calculate loglikelihoods for the given data
@@ -79,17 +88,18 @@ class VAEGeneric(tf.keras.Model):
         elbos_stacked = tf.stack(elbos, axis=0)
         return tf.reduce_mean(elbos_stacked).numpy()
 
+    def update_beta(self, epoch):
+
+        self.epoch = epoch
+        self.beta = min(epoch / self.warmup * self.max_beta, self.max_beta)
+        with tf.name_scope("training_scope"):
+            tf.summary.scalar("beta", self.beta, step=epoch)
+
 
 class VAE(VAEGeneric):
-    def __init__(self, D, L, max_beta=1., warmup=0, binary=False, **kwargs):
+    def __init__(self, L, **kwargs):
         super(VAE, self).__init__(**kwargs)
-        self.D = D
         self.L = L
-        self.max_beta = max_beta
-        self.beta = max_beta
-        self.warmup = warmup
-        self.binary = binary
-        self.epoch = 0
 
     def build(self, inputs_shape):
         self.encoder = Encoder(self.D)
@@ -179,27 +189,14 @@ class VAE(VAEGeneric):
         # aggregation still needed in order to remove the axis 1
         return self.mean_reducer(x_mean)
 
-    def update_beta(self, epoch):
-
-        self.epoch = epoch
-        self.beta = min(epoch / self.warmup * self.max_beta, self.max_beta)
-        with tf.name_scope("training_scope"):
-            tf.summary.scalar("beta", self.beta, step=epoch)
-
 
 class VampVAE(VAEGeneric):
-    def __init__(self, D, L, C, max_beta=1., warmup=0, pseudo_init_mean=.5, pseudo_init_std=0.01, binary=False,
-                 **kwargs):
+    def __init__(self, L, C, pseudo_init_mean=.5, pseudo_init_std=0.01, **kwargs):
         super(VampVAE, self).__init__(**kwargs)
-        self.D = D  # latent dimension
         self.L = L  # MC samples
         self.C = C  # number of pseudo inputs
-        self.max_beta = max_beta
-        self.beta = max_beta
-        self.warmup = warmup
         self.init_mean = pseudo_init_mean  # pseudo inputs initialization
         self.init_std = pseudo_init_std
-        self.binary = binary
 
     def build(self, inputs_shape):
         self.encoder = Encoder(self.D)
@@ -300,36 +297,20 @@ class VampVAE(VAEGeneric):
 
         return x_mean, x_logvar, samples, mu, logvar
 
-    def update_beta(self, epoch):
-        self.beta = min(epoch / self.warmup * self.max_beta, self.max_beta)
-
 
 class MixtureVAE():
     # TODO
     pass
 
 
-class HVAE(tf.keras.Model):
+class HVAE(VAEGeneric):
     """Combines the encoder and decoder into an end-to-end model for training."""
 
-    def __init__(
-            self,
-            D,
-            name="autoencoder",
-            max_beta=1.,
-            warmup=0,
-            binary=True,
-            **kwargs
-    ):
+    def __init__(self, **kwargs):
         super(HVAE, self).__init__(name=name, **kwargs)
-        self.D = D
         self.encoder = HierarchicalEncoder(D=D)
         self.sampling = Sampling(self.D, 1)
         self.mean_reducer = MeanReducer()
-        self.binary = binary
-        self.max_beta = max_beta
-        self.beta = max_beta
-        self.warmup = warmup
 
     def build(self, input_shape):
         self.decoder = HierarchicalDecoder((input_shape[1], input_shape[2]), D=self.D)
@@ -391,9 +372,3 @@ class HVAE(tf.keras.Model):
 
         return x_mean
 
-    def update_beta(self, epoch):
-
-        self.epoch = epoch
-        self.beta = min(epoch / self.warmup * self.max_beta, self.max_beta)
-        with tf.name_scope("training_scope"):
-            tf.summary.scalar("beta", self.beta, step=epoch)
