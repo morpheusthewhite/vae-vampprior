@@ -51,16 +51,6 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
     """
     Train model and visualize result
     """
-    # create folder to save results if it does not exists
-    res_dir = "results"
-    if not os.path.exists(res_dir):
-        os.mkdir(res_dir)
-    # create folder dedicated to this single experiment
-    current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    os.mkdir(os.path.join(res_dir, current_time))
-    # store current args for later inspection
-    with open(os.path.join(res_dir, current_time, 'commandline_args.txt'), 'w') as f:
-        json.dump(args.__dict__, f, indent=2)
 
     # set grey colormap
     plt.set_cmap('Greys')
@@ -80,6 +70,17 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
     vae.fit(x_train, x_train, epochs=epochs, batch_size=batch_size,
             validation_data=(x_test, x_test), callbacks=callbacks)
     # ================================
+
+    # create folder to save results if it does not exists
+    res_dir = "results"
+    if not os.path.exists(res_dir):
+        os.mkdir(res_dir)
+    # create folder dedicated to this single experiment
+    current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    os.mkdir(os.path.join(res_dir, current_time))
+    # store current args for later inspection
+    with open(os.path.join(res_dir, current_time, 'commandline_args.txt'), 'w') as f:
+        json.dump(args.__dict__, f, indent=2)
 
     print("Now testing reconstruction")
     reconstructions, _ = vae(x_test[:5])
