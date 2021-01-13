@@ -307,8 +307,8 @@ class HVAE(VAEGeneric):
     """Combines the encoder and decoder into an end-to-end model for training."""
 
     def __init__(self, **kwargs):
-        super(HVAE, self).__init__(name=name, **kwargs)
-        self.encoder = HierarchicalEncoder(D=D)
+        super(HVAE, self).__init__(**kwargs)
+        self.encoder = HierarchicalEncoder(D=self.D)
         self.sampling = Sampling(self.D, 1)
         self.mean_reducer = MeanReducer()
 
