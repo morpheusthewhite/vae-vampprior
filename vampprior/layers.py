@@ -198,7 +198,7 @@ class HierarchicalEncoder(layers.Layer):  # MLP block #1   # layer insieme di al
 class HierarchicalDecoder(layers.Layer):  # MLP block #2   # layer insieme di altri layer
     """Converts z1,z2, the encoded digit vectors, back into a readable digit x."""
 
-    def __init__(self, output_shape, D, name="decoder", **kwargs):
+    def __init__(self, output_shape, D, binary, name="decoder", **kwargs):
         super(HierarchicalDecoder, self).__init__(name=name, **kwargs)
         # decoder: p(z1 | z2)
         self.dense_1 = GatedDense(300, hactivation="sigmoid", name="dense_1")
@@ -220,6 +220,7 @@ class HierarchicalDecoder(layers.Layer):  # MLP block #2   # layer insieme di al
                                            name="dense_x_logvar",
                                            activation=Clamp(-6., 2.))
         self.output_shape_ = output_shape
+        self.binary = binary
 
         self.mean_reducer = MeanReducer()
 
@@ -255,8 +256,11 @@ class HierarchicalDecoder(layers.Layer):  # MLP block #2   # layer insieme di al
         x_logvar = self.dense_x_logvar(joint)
 
         x_mean_reshaped = self.reshape(x_mean)
-        # FIXME reshape x_logvar eventually when changing loss to log-logistic
-        return x_mean_reshaped, x_logvar, z1_p_mean, z1_p_logvar
+
+        if not self.binary:
+            x_logvar_reshaped = self.reshape(x_logvar)
+
+        return x_mean_reshaped, x_logvar_reshaped, z1_p_mean, z1_p_logvar
 
     def p_z1(self, z2):
         # decoder: p(z1 | z2)
