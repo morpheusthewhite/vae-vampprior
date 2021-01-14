@@ -17,6 +17,10 @@ class VAEGeneric(tf.keras.Model):
         self.warmup = warmup
         self.epoch = 0
 
+        # overwritten by the hierarchical model, needed to discriminate in the 
+        # likelihood computation
+        self.hierarchical = False
+
     def loglikelihood(self, X, R, MB=100):
         """
         Calculate loglikelihoods for the given data
@@ -39,13 +43,23 @@ class VAEGeneric(tf.keras.Model):
                 minibatch_start, minibatch_end = n * MB, (n + 1) * MB
 
                 minibatch = X[minibatch_start:minibatch_end]
-                x_mean, x_logvar, z, z_mu, z_logvar = self.forward(minibatch)
 
-                loglikelihood = self.loss_fn(minibatch,
-                                             x_mean, x_logvar, z, z_mu, z_logvar,
-                                             training=False, average=False)
+                if not self.hierarchical:
+                    x_mean, x_logvar, z, z_mu, z_logvar = self.forward(minibatch)
+
+                    loglikelihood = self.loss_fn(minibatch,
+                                                 x_mean, x_logvar, z, z_mu, z_logvar,
+                                                 training=False, average=False)
+                else:
+                    z1_q_mean, z1_q_logvar, z1_q, z2_q_mean, z2_q_logvar, z2_q, \
+                            x_mean, x_logvar, z1_p_mean, z1_p_logvar = self.forward(minibatch)
+
+                    loglikelihood = self.loss_fn(minibatch, x_mean, x_logvar, z1_q, z1_q_mean, z1_q_logvar,
+                                        z1_p_mean, z1_p_logvar, z2_q, z2_q_mean, z2_q_logvar,)
+
 
                 # append the result of the current minibatch
+                # the loglikelihood is the negative of the loss
                 loglikelihoods_minibatch.append(-loglikelihood)
 
             loglikelihoods.append(tf.concat(loglikelihoods_minibatch, axis=0))
@@ -75,17 +89,25 @@ class VAEGeneric(tf.keras.Model):
             minibatch_start, minibatch_end = n * MB, (n + 1) * MB
 
             minibatch = X[minibatch_start:minibatch_end]
-            x_mean, x_logvar, z, z_mu, z_logvar = self.forward(minibatch)
 
-            elbo = self.loss_fn(minibatch,
-                                x_mean, x_logvar, z, z_mu, z_logvar,
-                                training=False, average=True)
+            if not self.hierarchical:
+                x_mean, x_logvar, z, z_mu, z_logvar = self.forward(minibatch)
+
+                elbo = self.loss_fn(minibatch,
+                                    x_mean, x_logvar, z, z_mu, z_logvar,
+                                    training=False, average=True)
+            else:
+                z1_q_mean, z1_q_logvar, z1_q, z2_q_mean, z2_q_logvar, z2_q, \
+                        x_mean, x_logvar, z1_p_mean, z1_p_logvar = self.forward(minibatch)
+
+                elbo = self.loss_fn(minibatch, x_mean, x_logvar, z1_q, z1_q_mean, z1_q_logvar,
+                                    z1_p_mean, z1_p_logvar, z2_q, z2_q_mean, z2_q_logvar,)
 
             # append the result of the current minibatch
             elbos.append(elbo)
 
         elbos_stacked = tf.stack(elbos, axis=0)
-        return tf.reduce_mean(elbos_stacked).numpy()
+        return -tf.reduce_mean(elbos_stacked).numpy()
 
     def update_beta(self, epoch):
 
@@ -305,16 +327,36 @@ class HVAE(VAEGeneric):
         self.sampling = Sampling(self.D, 1)
         self.mean_reducer = MeanReducer()
 
+        # needed in to discriminate in likelihood computation
+        self.hierarchical = True
+
     def build(self, input_shape):
         self.decoder = HierarchicalDecoder((input_shape[1], input_shape[2]), D=self.D,
                                            binary=self.binary)
 
     def call(self, inputs, **kwargs):
         # variational dist from encoder
+        z1_q_mean, z1_q_logvar, z1_q, z2_q_mean, z2_q_logvar, z2_q, \
+                x_mean, x_logvar, z1_p_mean, z1_p_logvar = self.forward(inputs)
+
+        loss = self.loss_fn(inputs, x_mean, x_logvar, z1_q, z1_q_mean, z1_q_logvar,
+                            z1_p_mean, z1_p_logvar, z2_q, z2_q_mean, z2_q_logvar,)
+
+        self.add_loss(loss)
+
+        return x_mean, x_logvar
+
+    def forward(self, inputs):
         z1_q_mean, z1_q_logvar, z1_q, z2_q_mean, z2_q_logvar, z2_q = self.encoder(inputs)
 
         x_mean, x_logvar, z1_p_mean, z1_p_logvar = self.decoder((z1_q, z2_q))
 
+        return z1_q_mean, z1_q_logvar, z1_q, z2_q_mean, z2_q_logvar, z2_q, \
+                x_mean, x_logvar, z1_p_mean, z1_p_logvar
+
+    def loss_fn(self, inputs, x_mean, x_logvar, z1_q, z1_q_mean, z1_q_logvar,
+                z1_p_mean, z1_p_logvar, z2_q,
+                z2_q_mean, z2_q_logvar, training=True, average=True):
         # KL
         log_p_z1 = log_normal_diag(z1_q, z1_p_mean, z1_p_logvar, reduce_dim=1)
         log_q_z1 = log_normal_diag(z1_q, z1_q_mean, z1_q_logvar, reduce_dim=1)
@@ -322,19 +364,31 @@ class HVAE(VAEGeneric):
         log_q_z2 = log_normal_diag(z2_q, z2_q_mean, z2_q_logvar, reduce_dim=1)
         KL = -(log_p_z1 + log_p_z2 - log_q_z1 - log_q_z2)
 
-        # Reconstruction loss - log p(x | z)
-        KL = tf.math.reduce_mean(KL)
-
         if self.binary:
             log_p_theta = log_bernoulli(x_mean, inputs, reduce_dim=[1, 2], name='log_p_theta')
         else:
             log_p_theta = log_logistic256(inputs, x_mean, x_logvar,
                                           reduce_dim=[1, 2], name='log_p_theta')
-        rec_loss = - tf.math.reduce_mean(log_p_theta, name='rec-loss')
 
-        self.add_loss(rec_loss + self.beta * KL)
+        if average:
+            rec_loss = - tf.math.reduce_mean(log_p_theta, name='rec-loss')
+            # Reconstruction loss - log p(x | z)
+            regularization_loss = tf.math.reduce_mean(KL)
+        else:
+            rec_loss = - log_p_theta
+            regularization_loss = KL
 
-        return x_mean, x_logvar
+        # consider beta only if training
+        if training:
+            with tf.name_scope("training_scope"):
+                tf.summary.scalar("reconstruction_loss", rec_loss, step=self.epoch)
+                tf.summary.scalar("regularization_loss", regularization_loss, step=self.epoch)
+
+            loss = rec_loss + self.beta * regularization_loss
+        else:
+            loss = rec_loss + regularization_loss
+
+        return loss
 
     def log_p_z2(self, z2):
         log_prior = log_normal_standard(z2, reduce_dim=1)
