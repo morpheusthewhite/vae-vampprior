@@ -232,9 +232,9 @@ class VampVAE(VAEGeneric):
         )
 
     def call(self, inputs, training, **kwargs):
-        x_mean, x_logvar, samples, mu, logvar = self.forward(inputs)
+        x_mean, x_logvar, samples, z_mean, z_logvar = self.forward(inputs)
 
-        loss = self.loss_fn(inputs, mu, logvar, samples, x_mean, x_logvar, training)
+        loss = self.loss_fn(inputs, x_mean, x_logvar, samples, z_mean, z_logvar, training)
         self.add_loss(loss)
 
         # (N, 1, M, M) -> (N, M, M)
@@ -243,7 +243,7 @@ class VampVAE(VAEGeneric):
         else:
             return self.mean_reducer(x_mean), x_logvar
 
-    def loss_fn(self, inputs, z_mean, z_logvar, z, x_mean, x_logvar, training=True, average=True):
+    def loss_fn(self, inputs, x_mean, x_logvar, z, z_mean, z_logvar, training=True, average=True):
 
         # Reconstruction loss - log p(x | z)
         x_mean_t = tf.transpose(x_mean, (1, 0, 2, 3))  # (L, N, M, M)
