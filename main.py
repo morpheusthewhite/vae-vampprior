@@ -132,7 +132,7 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
 
     if "vamp" in model_name:
         # visualize pseudoinputs only for vamp-priors models
-        print("Retrieving preudoinputs")
+        print("Retrieving pseudo-inputs")
 
         # take just 10 of them
         assert vae.C > 10
