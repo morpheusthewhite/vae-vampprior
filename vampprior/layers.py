@@ -259,6 +259,9 @@ class HierarchicalDecoder(layers.Layer):  # MLP block #2   # layer insieme di al
 
         if not self.binary:
             x_logvar_reshaped = self.reshape(x_logvar)
+        else:
+            # not important
+            x_logvar_reshaped = x_logvar
 
         return x_mean_reshaped, x_logvar_reshaped, z1_p_mean, z1_p_logvar
 
