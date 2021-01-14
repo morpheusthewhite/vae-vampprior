@@ -17,7 +17,7 @@ class VAEGeneric(tf.keras.Model):
         self.warmup = warmup
         self.epoch = 0
 
-        # overwritten by the hierarchical model, needed to discriminate in the 
+        # overwritten by the hierarchical model, needed to discriminate in the
         # likelihood computation
         self.hierarchical = False
 
@@ -55,8 +55,8 @@ class VAEGeneric(tf.keras.Model):
                             x_mean, x_logvar, z1_p_mean, z1_p_logvar = self.forward(minibatch)
 
                     loglikelihood = self.loss_fn(minibatch, x_mean, x_logvar, z1_q, z1_q_mean, z1_q_logvar,
-                                        z1_p_mean, z1_p_logvar, z2_q, z2_q_mean, z2_q_logvar,)
-
+                                                 z1_p_mean, z1_p_logvar, z2_q, z2_q_mean, z2_q_logvar,
+                                                 training=False, average=False)
 
                 # append the result of the current minibatch
                 # the loglikelihood is the negative of the loss
@@ -101,7 +101,8 @@ class VAEGeneric(tf.keras.Model):
                         x_mean, x_logvar, z1_p_mean, z1_p_logvar = self.forward(minibatch)
 
                 elbo = self.loss_fn(minibatch, x_mean, x_logvar, z1_q, z1_q_mean, z1_q_logvar,
-                                    z1_p_mean, z1_p_logvar, z2_q, z2_q_mean, z2_q_logvar,)
+                                    z1_p_mean, z1_p_logvar, z2_q, z2_q_mean, z2_q_logvar,
+                                    training=False, average=False)
 
             # append the result of the current minibatch
             elbos.append(elbo)
