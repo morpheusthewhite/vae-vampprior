@@ -67,8 +67,8 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
         callbacks.append(tf.keras.callbacks.LambdaCallback(on_epoch_begin=lambda epoch, logs: vae.update_beta(epoch)))
 
     # TRAINING =======================
-    vae.fit(x_train, x_train, epochs=epochs, batch_size=batch_size,
-            validation_data=(x_test, x_test), callbacks=callbacks)
+    history = vae.fit(x_train, x_train, epochs=epochs, batch_size=batch_size,
+                      validation_data=(x_test, x_test), callbacks=callbacks)
     # ================================
 
     # create folder to save results if it does not exists
@@ -82,15 +82,30 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
     with open(os.path.join(res_dir, current_time, 'commandline_args.txt'), 'w') as f:
         json.dump(args.__dict__, f, indent=2)
 
+    # Plot training/val loss
+    train_losses = history.history['loss']
+    val_losses = history.history['val_loss']
+    epochs = np.arange(len(train_losses)) + 1
+    with plt.style.context('bmh'):
+        fig, ax = plt.subplots()
+        ax.plot(epochs, train_losses, label='train')
+        ax.plot(epochs, val_losses, label='val')
+        ax.set(xlabel='epoch',  # ylabel='loss (neg-LB)',
+               title='Training over epochs', xticks=epochs)
+        ax.legend()
+        fig.savefig(os.path.join(res_dir, current_time, f"{model_name}-losses.png"))
+
     print("Now testing reconstruction")
     reconstructions, _ = vae(x_test[:5])
 
     plt.figure().suptitle(f"Reconstruction for {model_name}")
     for i, reconstruction in enumerate(reconstructions):
         plt.subplot(2, 5, 1 + i)
+        plt.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
         plt.imshow(x_test[i])
 
         plt.subplot(2, 5, 6 + i)
+        plt.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
         plt.imshow(reconstruction)
 
     if show:
@@ -105,6 +120,7 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
     plt.figure().suptitle(f"Generations for {model_name}")
     for i, generation in enumerate(generations):
         plt.subplot(2, 5, 1 + i)
+        plt.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
         plt.imshow(generation)
 
     if show:
@@ -123,6 +139,7 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
         plt.figure().suptitle(f"Pseudoinputs for {model_name}")
         for i, pseudo_input in enumerate(pseudo_inputs):
             plt.subplot(2, 5, 1 + i)
+            plt.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
             plt.imshow(pseudo_input)
 
         if show:
@@ -134,19 +151,20 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
     loglikelihoods, loglikelihood_mean = vae.loglikelihood(x_test, 4)
 
     print(f"Loglikelihood: {loglikelihood_mean}")
-    plt.figure().suptitle(f"Loglikelihood histogram for {model_name}")
-    plt.hist(loglikelihoods, bins=100)
 
-    if show:
-        plt.show()
-    else:
-        plt.savefig(os.path.join(res_dir, current_time, f"{model_name}-loglikelihood-hist.png"))
+    with plt.style.context('ggplot'):
+        plt.figure().suptitle(f"Loglikelihood histogram for {model_name}")
+        plt.hist(loglikelihoods, bins=100)
+
+        if show:
+            plt.show()
+        else:
+            plt.savefig(os.path.join(res_dir, current_time, f"{model_name}-loglikelihood-hist.png"))
 
     return vae.ELBO(x_test)
 
 
 def main():
-
     binary = False
     if args.dataset == "mnist":
         mnist = tf.keras.datasets.mnist
