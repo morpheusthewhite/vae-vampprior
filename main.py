@@ -3,6 +3,7 @@ import json
 import os
 
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 import numpy as np
 import tensorflow as tf
 import datetime
@@ -91,7 +92,8 @@ def train_test_vae(vae, x_train, x_test, epochs, batch_size,
         ax.plot(epochs, train_losses, label='train')
         ax.plot(epochs, val_losses, label='val')
         ax.set(xlabel='epoch',  # ylabel='loss (neg-LB)',
-               title='Training over epochs', xticks=epochs)
+               title='Training over epochs')
+        ax.xaxis.set_major_locator(MaxNLocator(integer=True))
         ax.legend()
         fig.savefig(os.path.join(res_dir, current_time, f"{model_name}-losses.png"))
 
