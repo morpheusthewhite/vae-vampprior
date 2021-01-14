@@ -43,13 +43,13 @@ def load_frey(train_samples=1500, MB=100):
 
     x_train, x_test = data[:train_samples], data[-test_samples:]
 
-    return x_train, x_test
+    return np.array(x_train, dtype=np.float32), np.array(x_test, dtype=np.float32)
 
 
 def load_fashion_mnist():
     fashion_mnist = tf.keras.datasets.fashion_mnist
     (x_train, _), (x_test, _) = fashion_mnist.load_data()
-    x_train = x_train / 255.
-    x_test = x_test / 255.
+    x_train = np.array(x_train / 255., dtype=np.float32)
+    x_test = np.array(x_test / 255., dtype=np.float32)
 
     return x_train, x_test
