@@ -14,7 +14,7 @@ parser = argparse.ArgumentParser(description='VAE+VampPrior')
 # Model params
 parser.add_argument('--model-name', '-mn', type=str, default='vae', metavar='model_name',
                     help='model name: vae, vamp', choices=['vae', 'vamp', 'hvae'])
-parser.add_argument('-C', '--pseudo-inputs', type=int, default=300, metavar='C', dest='C',
+parser.add_argument('-C', '--pseudo-inputs', type=int, default=500, metavar='C', dest='C',
                     help='number of pseudo-inputs with vamp prior')
 parser.add_argument('-D', type=int, default=40, metavar='D',
                     help='number of stochastic hidden units, i.e. z size (same for z1 and z2 with HVAE)')
