@@ -312,11 +312,11 @@ class VampVAE(VAEGeneric):
 
     def forward(self, X):
         # main forward pass
-        mu, logvar = self.encoder(X)
-        samples = self.sampling((mu, logvar))  # N x L x D
+        z_mean, z_logvar = self.encoder(X)
+        samples = self.sampling((z_mean, z_logvar))  # N x L x D
         x_mean, x_logvar = self.decoder(samples)
 
-        return x_mean, x_logvar, samples, mu, logvar
+        return x_mean, x_logvar, samples, z_mean, z_logvar
 
 
 class HVAE(VAEGeneric):
