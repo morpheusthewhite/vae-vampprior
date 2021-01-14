@@ -150,7 +150,6 @@ class HierarchicalEncoder(layers.Layer):  # MLP block #1   # layer insieme di al
     def __init__(self, D, name="encoder", **kwargs):
         super(HierarchicalEncoder, self).__init__(name=name, **kwargs)
         self.flatten = layers.Flatten(name='enc-flatten')
-        # TODO move in build function
         # layers for z2,
         self.dense_1 = GatedDense(300, hactivation="sigmoid", name="dense_1")
         self.dense_2 = GatedDense(300, hactivation="sigmoid", name="dense_2")

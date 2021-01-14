@@ -41,13 +41,12 @@ class VAEGeneric(tf.keras.Model):
                 minibatch = X[minibatch_start:minibatch_end]
                 x_mean, x_logvar, z, z_mu, z_logvar = self.forward(minibatch)
 
-                # TODO change sign, loss is neg-loglikelihood
                 loglikelihood = self.loss_fn(minibatch,
                                              x_mean, x_logvar, z, z_mu, z_logvar,
                                              training=False, average=False)
 
                 # append the result of the current minibatch
-                loglikelihoods_minibatch.append(loglikelihood)
+                loglikelihoods_minibatch.append(-loglikelihood)
 
             loglikelihoods.append(tf.concat(loglikelihoods_minibatch, axis=0))
 
@@ -128,7 +127,6 @@ class VAE(VAEGeneric):
         # Reconstruction loss - log p(x | z)
         x_mean_t = tf.transpose(x_mean, (1, 0, 2, 3))  # (L, N, M, M)
         if self.binary:
-            # TODO check if mean over L must be computed BEFORE the reconstruction loss
             log_p_theta = log_bernoulli(x_mean_t, inputs, reduce_dim=[2, 3], name='log_p_theta')
         else:
             x_logvar_t = tf.transpose(x_logvar, (1, 0, 2, 3))
@@ -298,11 +296,6 @@ class VampVAE(VAEGeneric):
         return x_mean, x_logvar, samples, mu, logvar
 
 
-class MixtureVAE():
-    # TODO
-    pass
-
-
 class HVAE(VAEGeneric):
     """Combines the encoder and decoder into an end-to-end model for training."""
 
@@ -333,7 +326,6 @@ class HVAE(VAEGeneric):
         KL = tf.math.reduce_mean(KL)
 
         if self.binary:
-            # TODO check if mean over L must be computed BEFORE the reconstruction loss
             log_p_theta = log_bernoulli(x_mean, inputs, reduce_dim=[1, 2], name='log_p_theta')
         else:
             log_p_theta = log_logistic256(inputs, x_mean, x_logvar,
