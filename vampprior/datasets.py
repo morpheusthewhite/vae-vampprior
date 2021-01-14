@@ -3,6 +3,7 @@ import numpy as np
 import os
 import urllib3
 import pickle
+import tensorflow as tf
 
 
 DATASETS_FOLDER = "datasets"
@@ -44,3 +45,10 @@ def load_frey(train_samples=1500, MB=100):
 
     return x_train, x_test
 
+def load_fashion_mnist():
+    fashion_mnist = tf.keras.datasets.fashion_mnist
+    (x_train, _), (x_test, _) = fashion_mnist.load_data()
+    x_train = np.array(x_train / 255., dtype=np.float32)
+    x_test = np.array(x_test / 255., dtype=np.float32)
+
+    return x_train, x_test
