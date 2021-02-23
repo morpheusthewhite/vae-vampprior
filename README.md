@@ -19,6 +19,13 @@ The model can be trained and used on 3 different datasets:
 
 Information about the usage can be obtained by running `python main.py -h`.
 
+## Results
+
+Here are the results obtained with stardard vae on the Frey dataset
+
+![frey1](./img/vae-reconstructions.png)
+![frey2](./img/vae-generations.png)
+
 ## Authors
 
 Implemented by
